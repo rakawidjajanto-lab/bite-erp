@@ -1,0 +1,77 @@
+import * as XLSX from "xlsx";
+
+export type ParsedTransaction = {
+  date: string | null;
+  description: string;
+  category: string;
+  amountIn: number | null;
+  amountOut: number | null;
+};
+
+const CATEGORY_MAP: Record<string, string> = {
+  investment: "INVESTMENT",
+  sales: "SALES",
+  supplies: "SUPPLIES",
+  supply: "SUPPLIES",
+  operational: "OPERATIONAL",
+  operations: "OPERATIONAL",
+  marketing: "MARKETING",
+  rnd: "RND",
+  "r&d": "RND",
+  research: "RND",
+  inventory: "INVENTORY",
+  "other income": "OTHER_INCOME",
+  otherincome: "OTHER_INCOME",
+};
+
+function normalizeCategory(raw: string): string {
+  const key = (raw || "").trim().toLowerCase();
+  return CATEGORY_MAP[key] ?? "OTHER_INCOME";
+}
+
+function excelSerialToDate(serial: number): string | null {
+  if (!serial || isNaN(serial)) return null;
+  const utc_days = Math.floor(serial - 25569);
+  const date = new Date(utc_days * 86400 * 1000);
+  return date.toISOString().split("T")[0];
+}
+
+function parseAmount(val: unknown): number | null {
+  if (val === null || val === undefined || val === "") return null;
+  const num = typeof val === "number" ? val : parseFloat(String(val).replace(/[^0-9.-]/g, ""));
+  return isNaN(num) || num === 0 ? null : num;
+}
+
+export function parseExcelFile(buffer: ArrayBuffer): ParsedTransaction[] {
+  const workbook = XLSX.read(buffer, { type: "array" });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet, {
+    defval: null,
+  });
+
+  return rows
+    .map((row) => {
+      const dateRaw = row["Date"] ?? row["date"] ?? row["Tanggal"];
+      const description =
+        String(row["Description"] ?? row["description"] ?? row["Keterangan"] ?? "").trim();
+      const categoryRaw = String(row["Category"] ?? row["category"] ?? row["Kategori"] ?? "");
+      const amountIn = parseAmount(row["Money In (Credit)"] ?? row["Money In"] ?? row["Pemasukan"]);
+      const amountOut = parseAmount(row["Money Out (Debit)"] ?? row["Money Out"] ?? row["Pengeluaran"]);
+
+      let date: string | null = null;
+      if (typeof dateRaw === "number") {
+        date = excelSerialToDate(dateRaw);
+      } else if (typeof dateRaw === "string" && dateRaw.trim()) {
+        date = new Date(dateRaw).toISOString().split("T")[0];
+      }
+
+      return {
+        date,
+        description,
+        category: normalizeCategory(categoryRaw),
+        amountIn,
+        amountOut,
+      };
+    })
+    .filter((r) => r.description || r.amountIn || r.amountOut);
+}

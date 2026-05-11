@@ -1,0 +1,364 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum TransactionCategory {
+  INVESTMENT
+  SALES
+  SUPPLIES
+  OPERATIONAL
+  MARKETING
+  RND
+  INVENTORY
+  OTHER_INCOME
+}
+
+enum TransactionSource {
+  MANUAL
+  TOKOPEDIA
+  SHOPEE
+  PADEL
+  EXCEL_IMPORT
+}
+
+enum InvestmentDirection {
+  IN
+  OUT
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  RETURNED
+}
+
+enum MovementType {
+  RESTOCK
+  SALE
+  WASTE
+  ADJUSTMENT
+  PADEL_DELIVERY
+  RND_USAGE
+}
+
+enum RndStatus {
+  PLANNING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ImportSource {
+  EXCEL
+  TOKOPEDIA_CSV
+  SHOPEE_CSV
+}
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model Transaction {
+  id                  String              @id @default(cuid())
+  date                DateTime            @db.Date
+  description         String
+  category            TransactionCategory
+  amountIn            Decimal?            @db.Decimal(15, 2)
+  amountOut           Decimal?            @db.Decimal(15, 2)
+  source              TransactionSource   @default(MANUAL)
+  investmentDirection InvestmentDirection?
+  investorName        String?
+  referenceId         String?
+  notes               String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  platformOrder PlatformOrder?
+  rndExpenses   RndExpense[]
+  supplyPurchases SupplyPurchase[]
+
+  @@map("transactions")
+}
+
+model Platform {
+  id       String  @id @default(cuid())
+  name     String  @unique
+  isActive Boolean @default(true)
+
+  orders PlatformOrder[]
+
+  @@map("platforms")
+}
+
+model PlatformOrder {
+  id              String      @id @default(cuid())
+  platformId      String
+  externalOrderId String
+  orderDate       DateTime    @db.Date
+  status          OrderStatus @default(PENDING)
+  grossAmount     Decimal     @db.Decimal(15, 2)
+  platformFee     Decimal     @default(0) @db.Decimal(15, 2)
+  shippingCost    Decimal     @default(0) @db.Decimal(15, 2)
+  discount        Decimal     @default(0) @db.Decimal(15, 2)
+  netAmount       Decimal     @db.Decimal(15, 2)
+  customerName    String?
+  transactionId   String?     @unique
+  rawData         Json?
+  createdAt       DateTime    @default(now())
+
+  platform    Platform        @relation(fields: [platformId], references: [id])
+  transaction Transaction?    @relation(fields: [transactionId], references: [id])
+  items       PlatformOrderItem[]
+
+  @@unique([platformId, externalOrderId])
+  @@map("platform_orders")
+}
+
+model PlatformOrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  productId String?
+  flavorId  String?
+  quantity  Int
+  unitPrice Decimal  @db.Decimal(15, 2)
+  subtotal  Decimal  @db.Decimal(15, 2)
+
+  order   PlatformOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product?      @relation(fields: [productId], references: [id])
+  flavor  Flavor?       @relation(fields: [flavorId], references: [id])
+
+  @@map("platform_order_items")
+}
+
+model Product {
+  id           String  @id @default(cuid())
+  name         String
+  sku          String  @unique
+  unitCost     Decimal @db.Decimal(15, 2)
+  sellingPrice Decimal @db.Decimal(15, 2)
+  isActive     Boolean @default(true)
+  createdAt    DateTime @default(now())
+
+  flavors          Flavor[]
+  inventory        Inventory[]
+  inventoryMovements InventoryMovement[]
+  orderItems       PlatformOrderItem[]
+
+  @@map("products")
+}
+
+model Flavor {
+  id        String  @id @default(cuid())
+  name      String
+  productId String
+  isActive  Boolean @default(true)
+  colorHex  String?
+  createdAt DateTime @default(now())
+
+  product            Product             @relation(fields: [productId], references: [id])
+  inventory          Inventory[]
+  inventoryMovements InventoryMovement[]
+  orderItems         PlatformOrderItem[]
+  deliveryItems      PadelDeliveryItem[]
+  padelSales         PadelSale[]
+  rndProjects        RndProject[]
+
+  @@map("flavors")
+}
+
+model Inventory {
+  id           String   @id @default(cuid())
+  productId    String
+  flavorId     String?
+  quantity     Int      @default(0)
+  unit         String   @default("pcs")
+  reorderPoint Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id])
+  flavor  Flavor? @relation(fields: [flavorId], references: [id])
+
+  @@unique([productId, flavorId])
+  @@map("inventory")
+}
+
+model InventoryMovement {
+  id            String       @id @default(cuid())
+  productId     String
+  flavorId      String?
+  movementType  MovementType
+  quantityChange Int
+  referenceId   String?
+  notes         String?
+  createdAt     DateTime     @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+  flavor  Flavor? @relation(fields: [flavorId], references: [id])
+
+  @@map("inventory_movements")
+}
+
+model PadelVenue {
+  id           String  @id @default(cuid())
+  name         String
+  contactName  String?
+  contactPhone String?
+  location     String?
+  isActive     Boolean @default(true)
+
+  deliveries PadelDelivery[]
+  sales      PadelSale[]
+
+  @@map("padel_venues")
+}
+
+model PadelDelivery {
+  id           String   @id @default(cuid())
+  venueId      String
+  deliveryDate DateTime @db.Date
+  notes        String?
+  totalItems   Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  venue PadelVenue         @relation(fields: [venueId], references: [id])
+  items PadelDeliveryItem[]
+
+  @@map("padel_deliveries")
+}
+
+model PadelDeliveryItem {
+  id         String  @id @default(cuid())
+  deliveryId String
+  flavorId   String
+  quantity   Int
+  unitCost   Decimal @db.Decimal(15, 2)
+
+  delivery PadelDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  flavor   Flavor        @relation(fields: [flavorId], references: [id])
+
+  @@map("padel_delivery_items")
+}
+
+model PadelSale {
+  id          String   @id @default(cuid())
+  venueId     String
+  saleDate    DateTime @db.Date
+  flavorId    String
+  quantitySold Int
+  unitPrice   Decimal  @db.Decimal(15, 2)
+  totalAmount Decimal  @db.Decimal(15, 2)
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  venue  PadelVenue @relation(fields: [venueId], references: [id])
+  flavor Flavor     @relation(fields: [flavorId], references: [id])
+
+  @@map("padel_sales")
+}
+
+model RndProject {
+  id              String    @id @default(cuid())
+  name            String
+  description     String?
+  status          RndStatus @default(PLANNING)
+  startDate       DateTime  @db.Date
+  endDate         DateTime? @db.Date
+  targetFlavorId  String?
+  createdAt       DateTime  @default(now())
+
+  targetFlavor Flavor?      @relation(fields: [targetFlavorId], references: [id])
+  expenses     RndExpense[]
+
+  @@map("rnd_projects")
+}
+
+model RndExpense {
+  id            String   @id @default(cuid())
+  projectId     String
+  transactionId String?
+  date          DateTime @db.Date
+  description   String
+  amount        Decimal  @db.Decimal(15, 2)
+  subCategory   String?
+
+  project     RndProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [transactionId], references: [id])
+
+  @@map("rnd_expenses")
+}
+
+model Supply {
+  id           String  @id @default(cuid())
+  name         String
+  supplierName String?
+  unit         String
+  unitCost     Decimal @db.Decimal(15, 2)
+  currentStock Decimal @default(0) @db.Decimal(10, 2)
+  reorderPoint Decimal @default(0) @db.Decimal(10, 2)
+  notes        String?
+
+  purchases SupplyPurchase[]
+
+  @@map("supplies")
+}
+
+model SupplyPurchase {
+  id              String   @id @default(cuid())
+  supplyId        String
+  transactionId   String?
+  purchaseDate    DateTime @db.Date
+  quantity        Decimal  @db.Decimal(10, 2)
+  unitCost        Decimal  @db.Decimal(15, 2)
+  totalCost       Decimal  @db.Decimal(15, 2)
+  supplierInvoice String?
+
+  supply      Supply       @relation(fields: [supplyId], references: [id])
+  transaction Transaction? @relation(fields: [transactionId], references: [id])
+
+  @@map("supply_purchases")
+}
+
+model FinancialProjection {
+  id                String   @id @default(cuid())
+  projectionMonth   DateTime @db.Date
+  projectedRevenue  Decimal  @db.Decimal(15, 2)
+  projectedExpenses Decimal  @db.Decimal(15, 2)
+  projectedProfit   Decimal  @db.Decimal(15, 2)
+  actualRevenue     Decimal? @db.Decimal(15, 2)
+  actualExpenses    Decimal? @db.Decimal(15, 2)
+  actualProfit      Decimal? @db.Decimal(15, 2)
+  method            String   @default("moving_average")
+  confidenceScore   Decimal? @db.Decimal(5, 2)
+  notes             String?
+  createdAt         DateTime @default(now())
+
+  @@unique([projectionMonth])
+  @@map("financial_projections")
+}
+
+model ImportLog {
+  id          String       @id @default(cuid())
+  fileName    String
+  source      ImportSource
+  status      ImportStatus @default(PENDING)
+  rowsTotal   Int          @default(0)
+  rowsImported Int         @default(0)
+  rowsFailed  Int          @default(0)
+  errorLog    Json?
+  createdAt   DateTime     @default(now())
+  completedAt DateTime?
+
+  @@map("import_logs")
+}
