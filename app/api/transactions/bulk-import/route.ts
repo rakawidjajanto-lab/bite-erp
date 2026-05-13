@@ -7,7 +7,129 @@ type ImportRow = {
   category: string;
   amountIn: number | null;
   amountOut: number | null;
+  rowType?: string;
+  productName?: string;
+  quantity?: number;
+  recipient?: string;
+  purpose?: string;
+  assetCategory?: string;
+  currentValue?: number;
+  subCategory?: string;
 };
+
+async function handleInventory(row: ImportRow): Promise<boolean> {
+  const productName = row.productName?.trim();
+  if (!productName) return false;
+
+  const product = await prisma.product.findFirst({
+    where: { name: { equals: productName, mode: "insensitive" } },
+    select: { id: true },
+  });
+  if (!product) return false;
+
+  const qty = row.quantity ?? 1;
+  const existing = await prisma.inventory.findFirst({ where: { productId: product.id, flavorId: null } });
+  if (existing) {
+    await prisma.inventory.update({ where: { id: existing.id }, data: { quantity: { increment: qty } } });
+  } else {
+    await prisma.inventory.create({ data: { productId: product.id, flavorId: null, quantity: qty } });
+  }
+  await prisma.inventoryMovement.create({
+    data: {
+      productId: product.id,
+      flavorId: null,
+      movementType: "RESTOCK",
+      quantityChange: qty,
+      notes: `CSV import: ${row.description}`,
+    },
+  });
+  return true;
+}
+
+async function handleAsset(row: ImportRow): Promise<boolean> {
+  const purchasePrice = row.amountOut ?? row.amountIn ?? 0;
+  const currentValue = row.currentValue && row.currentValue > 0 ? row.currentValue : purchasePrice;
+  const validCategories = ["MACHINE", "FREEZER", "FURNITURE", "VEHICLE", "ELECTRONICS", "OTHER"];
+  const category = validCategories.includes(row.assetCategory ?? "") ? row.assetCategory! : "OTHER";
+
+  await prisma.physicalAsset.create({
+    data: {
+      name: row.description || "Imported Asset",
+      category: category as "MACHINE" | "FREEZER" | "FURNITURE" | "VEHICLE" | "ELECTRONICS" | "OTHER",
+      purchaseDate: row.date ? new Date(row.date) : new Date(),
+      purchasePrice,
+      currentValue,
+    },
+  });
+  return true;
+}
+
+async function handleRnd(row: ImportRow): Promise<boolean> {
+  let project = await prisma.rndProject.findFirst({
+    where: { name: "CSV Import" },
+    select: { id: true },
+  });
+  if (!project) {
+    project = await prisma.rndProject.create({
+      data: { name: "CSV Import", status: "IN_PROGRESS", startDate: new Date() },
+      select: { id: true },
+    });
+  }
+  await prisma.rndExpense.create({
+    data: {
+      projectId: project.id,
+      date: row.date ? new Date(row.date) : new Date(),
+      description: row.description || "Imported expense",
+      amount: row.amountOut ?? 0,
+      subCategory: row.subCategory || "other",
+    },
+  });
+  return true;
+}
+
+async function handleMarketing(row: ImportRow): Promise<boolean> {
+  const productName = row.productName?.trim();
+  if (!productName || !row.recipient) return false;
+
+  const product = await prisma.product.findFirst({
+    where: { name: { equals: productName, mode: "insensitive" } },
+    select: { id: true, unitCost: true },
+  });
+  if (!product) return false;
+
+  const validPurposes = ["ENDORSEMENT", "SAMPLING", "EVENT", "OTHER"];
+  const purpose = validPurposes.includes(row.purpose ?? "") ? row.purpose! : "OTHER";
+  const qty = row.quantity ?? 1;
+
+  const giveaway = await prisma.marketingGiveaway.create({
+    data: {
+      date: row.date ? new Date(row.date) : new Date(),
+      recipient: row.recipient,
+      purpose: purpose as "ENDORSEMENT" | "SAMPLING" | "EVENT" | "OTHER",
+      items: {
+        create: [{ productId: product.id, flavorId: null, quantity: qty, unitCost: product.unitCost }],
+      },
+    },
+  });
+
+  const invExisting = await prisma.inventory.findFirst({ where: { productId: product.id, flavorId: null } });
+  if (invExisting) {
+    await prisma.inventory.update({ where: { id: invExisting.id }, data: { quantity: { decrement: qty } } });
+  } else {
+    await prisma.inventory.create({ data: { productId: product.id, flavorId: null, quantity: -qty } });
+  }
+  await prisma.inventoryMovement.create({
+    data: {
+      productId: product.id,
+      flavorId: null,
+      movementType: "MARKETING_GIVEAWAY",
+      quantityChange: -qty,
+      referenceId: giveaway.id,
+      notes: `CSV import: ${row.recipient}`,
+    },
+  });
+  return true;
+}
 
 export async function POST(req: Request) {
   const body = await req.json();
@@ -23,11 +145,35 @@ export async function POST(req: Request) {
 
   for (const row of rows) {
     try {
-      if (!row.description && !row.amountIn && !row.amountOut) {
-        skipped++;
+      if (!row.description && !row.amountIn && !row.amountOut) { skipped++; continue; }
+
+      const type = (row.rowType ?? "transaction").toLowerCase();
+
+      if (type === "inventory" || type === "supplies") {
+        const ok = await handleInventory(row);
+        ok ? imported++ : skipped++;
         continue;
       }
 
+      if (type === "asset" || type === "investment") {
+        await handleAsset(row);
+        imported++;
+        continue;
+      }
+
+      if (type === "rnd" || type === "r&d" || type === "research") {
+        await handleRnd(row);
+        imported++;
+        continue;
+      }
+
+      if (type === "marketing") {
+        const ok = await handleMarketing(row);
+        ok ? imported++ : skipped++;
+        continue;
+      }
+
+      // Default: regular transaction with duplicate check
       const existing = await prisma.transaction.findFirst({
         where: {
           description: row.description,
@@ -36,11 +182,7 @@ export async function POST(req: Request) {
           amountOut: row.amountOut ?? undefined,
         },
       });
-
-      if (existing) {
-        skipped++;
-        continue;
-      }
+      if (existing) { skipped++; continue; }
 
       await prisma.transaction.create({
         data: {
@@ -58,10 +200,5 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({
-    imported,
-    skipped,
-    failed: errors.length,
-    errors: errors.slice(0, 10),
-  });
+  return NextResponse.json({ imported, skipped, failed: errors.length, errors: errors.slice(0, 10) });
 }

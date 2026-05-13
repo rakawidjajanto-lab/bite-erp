@@ -6,6 +6,15 @@ export type ParsedTransaction = {
   category: string;
   amountIn: number | null;
   amountOut: number | null;
+  // Smart routing fields
+  rowType: string;
+  productName: string;
+  quantity: number;
+  recipient: string;
+  purpose: string;
+  assetCategory: string;
+  currentValue: number;
+  subCategory: string;
 };
 
 type SupportedImportType = "excel" | "csv";
@@ -78,12 +87,23 @@ export function parseExcelFile(buffer: ArrayBuffer, fileName = "import.xlsx"): P
         date = new Date(dateRaw).toISOString().split("T")[0];
       }
 
+      const rawType = String(row["type"] ?? row["Type"] ?? "").trim().toLowerCase();
+      const rowType = rawType || "transaction";
+
       return {
         date,
         description,
         category: normalizeCategory(categoryRaw),
         amountIn,
         amountOut,
+        rowType,
+        productName: String(row["productName"] ?? row["Product Name"] ?? row["product"] ?? "").trim(),
+        quantity: Math.max(1, parseFloat(String(row["quantity"] ?? row["qty"] ?? row["Quantity"] ?? "1")) || 1),
+        recipient: String(row["recipient"] ?? row["Recipient"] ?? "").trim(),
+        purpose: String(row["purpose"] ?? row["Purpose"] ?? "other").trim().toUpperCase(),
+        assetCategory: String(row["assetCategory"] ?? row["Asset Category"] ?? row["asset_category"] ?? "OTHER").trim().toUpperCase(),
+        currentValue: parseFloat(String(row["currentValue"] ?? row["Current Value"] ?? row["current_value"] ?? "0").replace(/[^0-9.-]/g, "")) || 0,
+        subCategory: String(row["subCategory"] ?? row["Sub Category"] ?? row["sub_category"] ?? "other").trim().toLowerCase(),
       };
     })
     .filter((r) => r.description || r.amountIn || r.amountOut);

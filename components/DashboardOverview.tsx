@@ -14,7 +14,7 @@ import {
   Cell,
   Legend,
 } from "recharts";
-import { TrendingUp, TrendingDown, DollarSign, Wallet, Banknote, Package, FlaskConical, Megaphone, BarChart2 } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Wallet, Banknote, Package, Landmark, FlaskConical, Megaphone, BarChart2 } from "lucide-react";
 import { CATEGORY_COLORS, CATEGORY_LABELS, type TransactionCategory } from "@/types";
 
 type PLData = {
@@ -34,6 +34,7 @@ type CashFlowMonth = {
 type AssetsData = {
   cashBalance: number;
   inventoryValue: number;
+  physicalAssetValue: number;
   totalAssets: number;
   rndThisMonth: number;
   marketingGiveawayValue: number;
@@ -203,41 +204,53 @@ export function DashboardOverview() {
       {/* Asset Summary */}
       <div>
         <h3 className="text-sm font-semibold text-gray-700 mb-3">Asset Summary</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-3">
-          <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-3">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
             <div className="p-2.5 bg-green-50 rounded-xl shrink-0">
-              <Banknote size={20} className="text-green-600" />
+              <Banknote size={18} className="text-green-600" />
             </div>
             <div className="min-w-0">
               <p className="text-xs text-gray-500 font-medium">Cash Balance</p>
-              <p className="text-lg font-bold text-gray-900 truncate">
+              <p className="text-base sm:text-lg font-bold text-gray-900 truncate">
                 {assets ? formatIDR(assets.cashBalance) : "—"}
               </p>
               <p className="text-xs text-gray-400 hidden sm:block">All-time net cash</p>
             </div>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
             <div className="p-2.5 bg-blue-50 rounded-xl shrink-0">
-              <Package size={20} className="text-blue-600" />
+              <Package size={18} className="text-blue-600" />
             </div>
             <div className="min-w-0">
               <p className="text-xs text-gray-500 font-medium">Inventory Value</p>
-              <p className="text-lg font-bold text-gray-900 truncate">
+              <p className="text-base sm:text-lg font-bold text-gray-900 truncate">
                 {assets ? formatIDR(assets.inventoryValue) : "—"}
               </p>
               <p className="text-xs text-gray-400 hidden sm:block">Stock × cost price</p>
             </div>
           </div>
-          <div className="bg-white rounded-xl border border-blue-200 bg-blue-50 p-4 flex items-center gap-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+            <div className="p-2.5 bg-amber-50 rounded-xl shrink-0">
+              <Landmark size={18} className="text-amber-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500 font-medium">Equipment & Assets</p>
+              <p className="text-base sm:text-lg font-bold text-gray-900 truncate">
+                {assets ? formatIDR(assets.physicalAssetValue) : "—"}
+              </p>
+              <p className="text-xs text-gray-400 hidden sm:block">Current est. value</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-blue-200 bg-blue-50 p-4 flex items-center gap-3">
             <div className="p-2.5 bg-blue-600 rounded-xl shrink-0">
-              <BarChart2 size={20} className="text-white" />
+              <BarChart2 size={18} className="text-white" />
             </div>
             <div className="min-w-0">
               <p className="text-xs text-blue-700 font-medium">Total Assets</p>
-              <p className="text-lg font-bold text-blue-900 truncate">
+              <p className="text-base sm:text-lg font-bold text-blue-900 truncate">
                 {assets ? formatIDR(assets.totalAssets) : "—"}
               </p>
-              <p className="text-xs text-blue-500 hidden sm:block">Cash + Inventory</p>
+              <p className="text-xs text-blue-500 hidden sm:block">Cash + Inv + Equipment</p>
             </div>
           </div>
         </div>

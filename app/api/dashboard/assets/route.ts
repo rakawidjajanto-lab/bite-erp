@@ -6,7 +6,7 @@ export async function GET() {
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-  const [txAgg, inventoryItems, rndAgg, giveawayItems] = await Promise.all([
+  const [txAgg, inventoryItems, rndAgg, giveawayItems, physicalAssetAgg] = await Promise.all([
     prisma.transaction.aggregate({ _sum: { amountIn: true, amountOut: true } }),
     prisma.inventory.findMany({
       include: { product: { select: { unitCost: true } } },
@@ -19,6 +19,7 @@ export async function GET() {
       where: { giveaway: { date: { gte: startOfMonth, lte: endOfMonth } } },
       select: { quantity: true, unitCost: true },
     }),
+    prisma.physicalAsset.aggregate({ _sum: { currentValue: true } }),
   ]);
 
   const cashBalance =
@@ -38,10 +39,13 @@ export async function GET() {
     0
   );
 
+  const physicalAssetValue = parseFloat(String(physicalAssetAgg._sum.currentValue ?? 0));
+
   return NextResponse.json({
     cashBalance,
     inventoryValue,
-    totalAssets: cashBalance + inventoryValue,
+    physicalAssetValue,
+    totalAssets: cashBalance + inventoryValue + physicalAssetValue,
     rndThisMonth,
     marketingGiveawayValue,
   });

@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { formatIDR } from "@/lib/formatters/currency";
-import { Plus, Trash2, X, Megaphone } from "lucide-react";
+import { Plus, Trash2, X, Megaphone, Upload, Download } from "lucide-react";
+import { parseMarketingCsv, type ParsedGiveawayRow } from "@/lib/import/marketing-parser";
 
 type Product = { id: string; name: string; unitCost: number; flavors: { id: string; name: string }[] };
 type GiveawayItem = { id: string; quantity: number; unitCost: string; product: { name: string }; flavor: { name: string; colorHex: string | null } | null };
@@ -30,6 +31,10 @@ export default function MarketingPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [importRows, setImportRows] = useState<ParsedGiveawayRow[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
   const [form, setForm] = useState({
     date: new Date().toISOString().split("T")[0],
     recipient: "",
@@ -90,6 +95,38 @@ export default function MarketingPage() {
     fetchData();
   }
 
+  function handleMarketingFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const rows = parseMarketingCsv(ev.target!.result as ArrayBuffer, file.name);
+      setImportRows(rows);
+      setImportResult(null);
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  async function handleMarketingImport() {
+    if (!importRows.length) return;
+    setImporting(true);
+    const res = await fetch("/api/marketing/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rows: importRows }),
+    });
+    const result = await res.json();
+    setImportResult(result);
+    setImporting(false);
+    fetchData();
+  }
+
+  const MARKETING_TEMPLATE =
+    "data:text/csv;charset=utf-8,date,recipient,purpose,productName,quantity,notes\n" +
+    "2024-01-15,@influencer123,endorsement,Vanilla Gelato,10,January campaign\n" +
+    "2024-01-16,Food Festival Jakarta,event,Chocolate Gelato,30,Booth sampling\n" +
+    "2024-01-17,@foodblogger_id,sampling,Matcha Gelato,5,";
+
   function formatDate(d: string) {
     return new Date(d).toLocaleDateString("id-ID", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
   }
@@ -103,13 +140,22 @@ export default function MarketingPage() {
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Giveaways & Endorsements</h2>
             <p className="text-sm text-gray-500">Track free items given for marketing purposes</p>
           </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition min-h-[44px]"
-          >
-            <Plus size={15} />
-            Log Giveaway
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setShowImport(true); setImportRows([]); setImportResult(null); }}
+              className="flex items-center gap-1.5 border border-gray-300 text-gray-600 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition min-h-[44px]"
+            >
+              <Upload size={15} />
+              <span className="hidden sm:inline">Import CSV</span>
+            </button>
+            <button
+              onClick={() => setShowForm(true)}
+              className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition min-h-[44px]"
+            >
+              <Plus size={15} />
+              Log Giveaway
+            </button>
+          </div>
         </div>
 
         {giveaways.length === 0 ? (
@@ -160,6 +206,91 @@ export default function MarketingPage() {
           </div>
         )}
       </div>
+
+      {showImport && (
+        <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-3 sm:p-6">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 sticky top-0 bg-white z-10">
+              <h2 className="font-semibold text-gray-900">Import Giveaways from CSV</h2>
+              <button onClick={() => setShowImport(false)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="bg-gray-50 rounded-xl p-3 text-xs text-gray-500 space-y-1">
+                <p className="font-medium text-gray-700">Required columns: <code className="bg-gray-200 px-1 rounded">date, recipient, purpose, productName, quantity</code></p>
+                <p>purpose values: <code className="bg-gray-200 px-1 rounded">endorsement</code> · <code className="bg-gray-200 px-1 rounded">sampling</code> · <code className="bg-gray-200 px-1 rounded">event</code> · <code className="bg-gray-200 px-1 rounded">other</code></p>
+                <p className="text-gray-400">productName must match an existing product name exactly (case-insensitive).</p>
+                <a href={MARKETING_TEMPLATE} download="marketing_import_template.csv" className="flex items-center gap-1 text-blue-600 hover:text-blue-700 mt-1.5">
+                  <Download size={12} /> Download template CSV
+                </a>
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-500 mb-1.5 block font-medium">Select CSV file</label>
+                <input
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  onChange={handleMarketingFileSelect}
+                  className="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+              </div>
+
+              {importRows.length > 0 && !importResult && (
+                <div>
+                  <p className="text-xs font-medium text-gray-600 mb-2">{importRows.length} rows ready to import</p>
+                  <div className="overflow-x-auto rounded-xl border border-gray-200 max-h-48">
+                    <table className="w-full text-xs min-w-[440px]">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Date</th>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Recipient</th>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Purpose</th>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Product</th>
+                          <th className="text-right px-3 py-2 text-gray-500 font-medium">Qty</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {importRows.slice(0, 20).map((row, i) => (
+                          <tr key={i}>
+                            <td className="px-3 py-2 text-gray-500">{row.date}</td>
+                            <td className="px-3 py-2 text-gray-800 max-w-[100px] truncate">{row.recipient}</td>
+                            <td className="px-3 py-2 text-gray-500">{row.purpose}</td>
+                            <td className="px-3 py-2 text-gray-800 max-w-[100px] truncate">{row.productName}</td>
+                            <td className="px-3 py-2 text-right text-gray-700">{row.quantity}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {importRows.length > 20 && <p className="text-xs text-gray-400 mt-1">Showing first 20 of {importRows.length} rows</p>}
+                </div>
+              )}
+
+              {importResult && (
+                <div className="bg-green-50 rounded-xl px-4 py-3 text-sm text-green-800 space-y-0.5">
+                  <p className="font-semibold">Import complete</p>
+                  <p>{importResult.imported} imported · {importResult.skipped} skipped · {importResult.failed} failed</p>
+                  {importResult.failed > 0 && <p className="text-xs text-green-600">Failed rows likely have unrecognised product names — check your product list in Settings.</p>}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <button onClick={() => setShowImport(false)} className="flex-1 border border-gray-300 text-gray-600 rounded-xl py-2.5 text-sm font-medium">
+                  {importResult ? "Close" : "Cancel"}
+                </button>
+                {!importResult && (
+                  <button
+                    onClick={handleMarketingImport}
+                    disabled={importing || importRows.length === 0}
+                    className="flex-1 bg-blue-600 text-white rounded-xl py-2.5 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {importing ? "Importing..." : `Import ${importRows.length} rows`}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-3 sm:p-6">

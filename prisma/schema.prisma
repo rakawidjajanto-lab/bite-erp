@@ -65,6 +65,15 @@ enum RndStatus {
   CANCELLED
 }
 
+enum AssetCategory {
+  MACHINE
+  FREEZER
+  FURNITURE
+  VEHICLE
+  ELECTRONICS
+  OTHER
+}
+
 enum ImportSource {
   EXCEL
   TOKOPEDIA_CSV
@@ -402,6 +411,19 @@ model MarketingGiveawayItem {
   flavor   Flavor?           @relation(fields: [flavorId], references: [id])
 
   @@map("marketing_giveaway_items")
+}
+
+model PhysicalAsset {
+  id            String        @id @default(cuid())
+  name          String
+  category      AssetCategory
+  purchaseDate  DateTime      @db.Date
+  purchasePrice Decimal       @db.Decimal(15, 2)
+  currentValue  Decimal       @db.Decimal(15, 2)
+  notes         String?
+  createdAt     DateTime      @default(now())
+
+  @@map("physical_assets")
 }
 
 model RndInventoryUsage {

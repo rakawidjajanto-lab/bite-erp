@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { formatIDR } from "@/lib/formatters/currency";
-import { Plus, ChevronDown, ChevronUp, Package, Trash2 } from "lucide-react";
+import { Plus, ChevronDown, ChevronUp, Package, Trash2, Upload, X, Download } from "lucide-react";
+import { parseRndCsv, type ParsedRndExpense } from "@/lib/import/rnd-parser";
 
 type InventoryUsage = {
   id: string;
@@ -58,6 +59,10 @@ export default function RndPage() {
     subCategory: "ingredients",
   });
   const [inventoryItems, setInventoryItems] = useState<FormInventoryItem[]>([]);
+  const [showImport, setShowImport] = useState<string | null>(null);
+  const [importRows, setImportRows] = useState<ParsedRndExpense[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
 
   const fetchProjects = () =>
     fetch("/api/rnd").then((r) => r.json()).then(setProjects).catch(() => {});
@@ -114,6 +119,38 @@ export default function RndPage() {
     setInventoryItems([]);
     setNewExpense({ date: new Date().toISOString().split("T")[0], description: "", amount: 0, subCategory: "ingredients" });
   }
+
+  function handleRndFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const rows = parseRndCsv(ev.target!.result as ArrayBuffer, file.name);
+      setImportRows(rows);
+      setImportResult(null);
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  async function handleRndImport(projectId: string) {
+    if (!importRows.length) return;
+    setImporting(true);
+    const res = await fetch("/api/rnd/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId, rows: importRows }),
+    });
+    const result = await res.json();
+    setImportResult(result);
+    setImporting(false);
+    fetchProjects();
+  }
+
+  const RND_TEMPLATE =
+    "data:text/csv;charset=utf-8,date,description,subCategory,amount\n" +
+    "2024-01-15,Matcha powder trial,ingredients,150000\n" +
+    "2024-01-16,pH testing kit,equipment,85000\n" +
+    "2024-01-17,Taste testing session,testing,50000";
 
   return (
     <>
@@ -198,6 +235,15 @@ export default function RndPage() {
                       </div>
                     ))}
                   </div>
+
+                  {showExpense !== p.id && (
+                    <button
+                      onClick={() => { setShowImport(p.id); setImportRows([]); setImportResult(null); }}
+                      className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 min-h-[44px]"
+                    >
+                      <Upload size={14} /> Import CSV
+                    </button>
+                  )}
 
                   {showExpense === p.id ? (
                     <div className="bg-gray-50 rounded-xl p-3 space-y-3">
@@ -339,6 +385,87 @@ export default function RndPage() {
           ))}
         </div>
       </div>
+
+      {showImport && (
+        <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-3 sm:p-6">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 sticky top-0 bg-white z-10">
+              <h2 className="font-semibold text-gray-900">Import R&D Expenses from CSV</h2>
+              <button onClick={() => setShowImport(null)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="bg-gray-50 rounded-xl p-3 text-xs text-gray-500 space-y-1">
+                <p className="font-medium text-gray-700">Required columns: <code className="bg-gray-200 px-1 rounded">date, description, subCategory, amount</code></p>
+                <p>subCategory values: <code className="bg-gray-200 px-1 rounded">ingredients</code> · <code className="bg-gray-200 px-1 rounded">equipment</code> · <code className="bg-gray-200 px-1 rounded">testing</code> · <code className="bg-gray-200 px-1 rounded">labor</code> · <code className="bg-gray-200 px-1 rounded">other</code></p>
+                <a href={RND_TEMPLATE} download="rnd_import_template.csv" className="flex items-center gap-1 text-blue-600 hover:text-blue-700 mt-1.5">
+                  <Download size={12} /> Download template CSV
+                </a>
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-500 mb-1.5 block font-medium">Select CSV file</label>
+                <input
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  onChange={handleRndFileSelect}
+                  className="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+              </div>
+
+              {importRows.length > 0 && !importResult && (
+                <div>
+                  <p className="text-xs font-medium text-gray-600 mb-2">{importRows.length} rows ready to import</p>
+                  <div className="overflow-x-auto rounded-xl border border-gray-200 max-h-48">
+                    <table className="w-full text-xs min-w-[400px]">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Date</th>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Description</th>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Category</th>
+                          <th className="text-right px-3 py-2 text-gray-500 font-medium">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {importRows.slice(0, 20).map((row, i) => (
+                          <tr key={i}>
+                            <td className="px-3 py-2 text-gray-500">{row.date}</td>
+                            <td className="px-3 py-2 text-gray-800 max-w-[160px] truncate">{row.description}</td>
+                            <td className="px-3 py-2 text-gray-500">{row.subCategory}</td>
+                            <td className="px-3 py-2 text-right text-red-500 font-medium">{formatIDR(row.amount)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {importRows.length > 20 && <p className="text-xs text-gray-400 mt-1">Showing first 20 of {importRows.length} rows</p>}
+                </div>
+              )}
+
+              {importResult && (
+                <div className="bg-green-50 rounded-xl px-4 py-3 text-sm text-green-800 space-y-0.5">
+                  <p className="font-semibold">Import complete</p>
+                  <p>{importResult.imported} imported · {importResult.skipped} skipped · {importResult.failed} failed</p>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <button onClick={() => setShowImport(null)} className="flex-1 border border-gray-300 text-gray-600 rounded-xl py-2.5 text-sm font-medium">
+                  {importResult ? "Close" : "Cancel"}
+                </button>
+                {!importResult && (
+                  <button
+                    onClick={() => handleRndImport(showImport)}
+                    disabled={importing || importRows.length === 0}
+                    className="flex-1 bg-blue-600 text-white rounded-xl py-2.5 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {importing ? "Importing..." : `Import ${importRows.length} rows`}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showNewProject && (
         <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-3 sm:p-4">

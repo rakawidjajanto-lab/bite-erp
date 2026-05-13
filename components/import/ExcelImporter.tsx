@@ -4,9 +4,28 @@ import { useState, useRef } from "react";
 import { parseExcelFile, type ParsedTransaction } from "@/lib/import/excel-parser";
 import { formatIDR } from "@/lib/formatters/currency";
 import { CATEGORY_LABELS, CATEGORY_COLORS, type TransactionCategory } from "@/types";
-import { Upload, CheckCircle2, AlertCircle } from "lucide-react";
+import { Upload, CheckCircle2, AlertCircle, Download } from "lucide-react";
 
 type ImportResult = { imported: number; skipped: number; failed: number };
+
+const ROW_TYPE_STYLES: Record<string, { label: string; className: string }> = {
+  transaction: { label: "Transaction", className: "bg-blue-100 text-blue-700" },
+  inventory:   { label: "Inventory",   className: "bg-green-100 text-green-700" },
+  supplies:    { label: "Inventory",   className: "bg-green-100 text-green-700" },
+  asset:       { label: "Asset",       className: "bg-amber-100 text-amber-700" },
+  investment:  { label: "Asset",       className: "bg-amber-100 text-amber-700" },
+  rnd:         { label: "R&D",         className: "bg-purple-100 text-purple-700" },
+  marketing:   { label: "Marketing",   className: "bg-orange-100 text-orange-700" },
+};
+
+const TEMPLATE_CSV =
+  "data:text/csv;charset=utf-8," +
+  "date,description,type,amount_in,amount_out,category,productName,quantity,recipient,purpose,assetCategory,currentValue,subCategory\n" +
+  "2024-01-15,January Gelato Sales,transaction,5000000,,SALES,,,,,,, \n" +
+  "2024-01-16,Gelato Machine Purchase,asset,,15000000,,,,,, MACHINE,12000000,\n" +
+  "2024-01-17,R&D Chocolate Trial,rnd,,500000,,,,,,,,ingredients\n" +
+  "2024-01-18,Vanilla Sampling Event,marketing,,,,Vanilla Gelato,20,@influencer123,sampling,,,\n" +
+  "2024-01-19,Restock Chocolate Base,inventory,,800000,,Chocolate Base,50,,,,,\n";
 
 export function ExcelImporter() {
   const [rows, setRows] = useState<ParsedTransaction[]>([]);
@@ -78,6 +97,14 @@ export function ExcelImporter() {
           Click to upload or drag & drop your import file
         </p>
         <p className="text-xs text-gray-400 mt-1">Supports .xlsx, .xls, and .csv files</p>
+        <a
+          href={TEMPLATE_CSV}
+          download="transaction_import_template.csv"
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex items-center gap-1 mt-3 text-xs text-blue-600 hover:text-blue-700"
+        >
+          <Download size={12} /> Download template CSV
+        </a>
         <input
           ref={inputRef}
           type="file"
@@ -103,7 +130,7 @@ export function ExcelImporter() {
           <div>
             <p className="font-semibold">Import complete!</p>
             <p>
-              {result.imported} imported &middot; {result.skipped} skipped (duplicates) &middot;{" "}
+              {result.imported} imported &middot; {result.skipped} skipped &middot;{" "}
               {result.failed} failed
             </p>
           </div>
@@ -136,6 +163,7 @@ export function ExcelImporter() {
                 <tr>
                   <th className="text-left py-3 px-4 text-gray-500 font-medium">Date</th>
                   <th className="text-left py-3 px-4 text-gray-500 font-medium">Description</th>
+                  <th className="text-left py-3 px-4 text-gray-500 font-medium">Type</th>
                   <th className="text-left py-3 px-4 text-gray-500 font-medium">Category</th>
                   <th className="text-right py-3 px-4 text-green-600 font-medium">In</th>
                   <th className="text-right py-3 px-4 text-red-500 font-medium">Out</th>
@@ -148,6 +176,16 @@ export function ExcelImporter() {
                       {row.date ?? "—"}
                     </td>
                     <td className="py-2.5 px-4 text-gray-900 max-w-xs truncate">{row.description}</td>
+                    <td className="py-2.5 px-4">
+                      {(() => {
+                        const style = ROW_TYPE_STYLES[row.rowType] ?? ROW_TYPE_STYLES.transaction;
+                        return (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${style.className}`}>
+                            {style.label}
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td className="py-2.5 px-4">
                       <span
                         className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium text-white"
