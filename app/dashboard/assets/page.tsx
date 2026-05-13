@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { formatIDR } from "@/lib/formatters/currency";
-import { Plus, X, Landmark, TrendingDown, TrendingUp } from "lucide-react";
+import { Plus, X, Landmark, TrendingDown, TrendingUp, Upload, Download } from "lucide-react";
+import { parseAssetsCsv, type ParsedAssetRow } from "@/lib/import/assets-parser";
 
 type PhysicalAsset = {
   id: string;
@@ -38,6 +39,10 @@ export default function AssetsPage() {
   const [assets, setAssets] = useState<PhysicalAsset[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [importRows, setImportRows] = useState<ParsedAssetRow[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
   const [form, setForm] = useState({
     name: "",
     category: "MACHINE",
@@ -68,6 +73,38 @@ export default function AssetsPage() {
     setSaving(false);
     setShowForm(false);
     setForm({ name: "", category: "MACHINE", purchaseDate: new Date().toISOString().split("T")[0], purchasePrice: "", currentValue: "", notes: "" });
+    fetchAssets();
+  }
+
+  const ASSETS_TEMPLATE =
+    "data:text/csv;charset=utf-8,name,category,purchaseDate,purchasePrice,currentValue,notes\n" +
+    "Taylor C602 Gelato Machine,machine,2023-06-15,45000000,38000000,Serial: TC-2023-001\n" +
+    "Display Freezer 2-Door,freezer,2023-08-01,12000000,10000000,\n" +
+    "Delivery Motorcycle,vehicle,2022-03-10,18000000,14000000,Honda PCX\n" +
+    "Counter & Shelving,furniture,2023-01-20,8000000,7000000,\n";
+
+  function handleAssetsFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setImportRows(parseAssetsCsv(ev.target!.result as ArrayBuffer, file.name));
+      setImportResult(null);
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = "";
+  }
+
+  async function handleAssetsImport() {
+    if (!importRows.length) return;
+    setImporting(true);
+    const res = await fetch("/api/assets/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rows: importRows }),
+    });
+    setImportResult(await res.json());
+    setImporting(false);
     fetchAssets();
   }
 
@@ -108,13 +145,22 @@ export default function AssetsPage() {
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Physical Assets</h2>
             <p className="text-sm text-gray-500">Machines, freezers, furniture, vehicles</p>
           </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition min-h-[44px]"
-          >
-            <Plus size={15} />
-            Add Asset
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setShowImport(true); setImportRows([]); setImportResult(null); }}
+              className="flex items-center gap-1.5 border border-gray-300 text-gray-600 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition min-h-[44px]"
+            >
+              <Upload size={15} />
+              <span className="hidden sm:inline">Import CSV</span>
+            </button>
+            <button
+              onClick={() => setShowForm(true)}
+              className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition min-h-[44px]"
+            >
+              <Plus size={15} />
+              Add Asset
+            </button>
+          </div>
         </div>
 
         {assets.length === 0 ? (
@@ -164,6 +210,98 @@ export default function AssetsPage() {
           </div>
         )}
       </div>
+
+      {showImport && (
+        <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-3 sm:p-6">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 sticky top-0 bg-white z-10">
+              <h2 className="font-semibold text-gray-900">Import Assets from CSV</h2>
+              <button onClick={() => setShowImport(false)} className="p-1.5 hover:bg-gray-100 rounded-lg">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="bg-gray-50 rounded-xl p-3 text-xs text-gray-500 space-y-1.5">
+                <p className="font-medium text-gray-700">CSV columns: <code className="bg-gray-200 px-1 rounded">name, category, purchaseDate, purchasePrice, currentValue, notes</code></p>
+                <p><span className="font-medium text-gray-600">category</span> values: <code className="bg-gray-200 px-1 rounded">machine</code> · <code className="bg-gray-200 px-1 rounded">freezer</code> · <code className="bg-gray-200 px-1 rounded">furniture</code> · <code className="bg-gray-200 px-1 rounded">vehicle</code> · <code className="bg-gray-200 px-1 rounded">electronics</code> · <code className="bg-gray-200 px-1 rounded">other</code></p>
+                <p><span className="font-medium text-gray-600">currentValue</span> defaults to purchasePrice if left blank.</p>
+                <a href={ASSETS_TEMPLATE} download="assets_import_template.csv" className="flex items-center gap-1 text-blue-600 hover:text-blue-700 pt-0.5">
+                  <Download size={12} /> Download template CSV
+                </a>
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-500 mb-1.5 block font-medium">Select file</label>
+                <input
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  onChange={handleAssetsFile}
+                  className="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+              </div>
+
+              {importRows.length > 0 && !importResult && (
+                <div>
+                  <p className="text-xs font-medium text-gray-600 mb-2">{importRows.length} rows ready to import</p>
+                  <div className="overflow-x-auto rounded-xl border border-gray-200 max-h-52">
+                    <table className="w-full text-xs min-w-[440px]">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Name</th>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Category</th>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Date</th>
+                          <th className="text-right px-3 py-2 text-gray-500 font-medium">Purchase</th>
+                          <th className="text-right px-3 py-2 text-gray-500 font-medium">Value</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {importRows.map((row, i) => (
+                          <tr key={i} className="hover:bg-gray-50">
+                            <td className="px-3 py-2 font-medium text-gray-800 max-w-[140px] truncate">{row.name}</td>
+                            <td className="px-3 py-2">
+                              <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${CATEGORY_COLORS[row.category] ?? "bg-gray-100 text-gray-600"}`}>
+                                {CATEGORY_LABELS[row.category] ?? row.category}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-gray-500">{row.purchaseDate}</td>
+                            <td className="px-3 py-2 text-right text-gray-700">{row.purchasePrice.toLocaleString("id-ID")}</td>
+                            <td className="px-3 py-2 text-right text-blue-700 font-medium">{row.currentValue.toLocaleString("id-ID")}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {importResult && (
+                <div className={`rounded-xl px-4 py-3 text-sm space-y-0.5 ${importResult.failed > 0 ? "bg-amber-50 text-amber-900" : "bg-green-50 text-green-800"}`}>
+                  <p className="font-semibold">Import complete</p>
+                  <p>{importResult.imported} imported · {importResult.skipped} skipped · {importResult.failed} failed</p>
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={() => setShowImport(false)}
+                  className="flex-1 border border-gray-300 text-gray-600 rounded-xl py-2.5 text-sm font-medium"
+                >
+                  {importResult ? "Close" : "Cancel"}
+                </button>
+                {!importResult && (
+                  <button
+                    onClick={handleAssetsImport}
+                    disabled={importing || importRows.length === 0}
+                    className="flex-1 bg-blue-600 text-white rounded-xl py-2.5 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {importing ? "Importing..." : `Import ${importRows.length} rows`}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-3 sm:p-6">
