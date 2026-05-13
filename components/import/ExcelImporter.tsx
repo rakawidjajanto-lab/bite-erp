@@ -20,11 +20,20 @@ export function ExcelImporter() {
     setResult(null);
     setError("");
     setFileName(file.name);
+    const lowerName = file.name.toLowerCase();
+    const isSupported =
+      lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls") || lowerName.endsWith(".csv");
+    if (!isSupported) {
+      setRows([]);
+      setError("Unsupported file type. Please upload .xlsx, .xls, or .csv");
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const buffer = e.target?.result as ArrayBuffer;
-        const parsed = parseExcelFile(buffer);
+        const parsed = parseExcelFile(buffer, file.name);
         setRows(parsed);
       } catch (err) {
         setError(String(err));
@@ -66,13 +75,13 @@ export function ExcelImporter() {
       >
         <Upload size={32} className="mx-auto text-gray-400 mb-3" />
         <p className="text-sm font-medium text-gray-700">
-          Click to upload or drag & drop your Excel file
+          Click to upload or drag & drop your import file
         </p>
-        <p className="text-xs text-gray-400 mt-1">Supports .xlsx files</p>
+        <p className="text-xs text-gray-400 mt-1">Supports .xlsx, .xls, and .csv files</p>
         <input
           ref={inputRef}
           type="file"
-          accept=".xlsx,.xls"
+          accept=".xlsx,.xls,.csv,text/csv,application/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0];

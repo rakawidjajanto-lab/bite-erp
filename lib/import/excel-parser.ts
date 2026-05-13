@@ -8,6 +8,8 @@ export type ParsedTransaction = {
   amountOut: number | null;
 };
 
+type SupportedImportType = "excel" | "csv";
+
 const CATEGORY_MAP: Record<string, string> = {
   investment: "INVESTMENT",
   sales: "SALES",
@@ -42,13 +44,24 @@ function parseAmount(val: unknown): number | null {
   return isNaN(num) || num === 0 ? null : num;
 }
 
-export function parseExcelFile(buffer: ArrayBuffer): ParsedTransaction[] {
-  const workbook = XLSX.read(buffer, { type: "array" });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet, {
-    defval: null,
-  });
+function detectImportType(fileName: string): SupportedImportType {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".csv")) return "csv";
+  return "excel";
+}
 
+function readRows(buffer: ArrayBuffer, fileName: string): Record<string, unknown>[] {
+  const importType = detectImportType(fileName);
+  const workbook =
+    importType === "csv"
+      ? XLSX.read(new TextDecoder("utf-8").decode(buffer), { type: "string", raw: true })
+      : XLSX.read(buffer, { type: "array" });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  return XLSX.utils.sheet_to_json(sheet, { defval: null });
+}
+
+export function parseExcelFile(buffer: ArrayBuffer, fileName = "import.xlsx"): ParsedTransaction[] {
+  const rows = readRows(buffer, fileName);
   return rows
     .map((row) => {
       const dateRaw = row["Date"] ?? row["date"] ?? row["Tanggal"];
