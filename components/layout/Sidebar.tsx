@@ -10,6 +10,7 @@ import {
   MapPin,
   Package,
   FlaskConical,
+  Megaphone,
   Settings,
   X,
 } from "lucide-react";
@@ -23,6 +24,7 @@ const nav = [
   { label: "Venue", href: "/dashboard/venue", icon: MapPin },
   { label: "Inventory", href: "/dashboard/inventory", icon: Package },
   { label: "R&D", href: "/dashboard/rnd", icon: FlaskConical },
+  { label: "Marketing", href: "/dashboard/marketing", icon: Megaphone },
   { label: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 

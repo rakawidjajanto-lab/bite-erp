@@ -18,6 +18,7 @@ export async function GET(req: Request) {
       SUM(COALESCE(amount_out, 0)) as money_out
     FROM transactions
     WHERE date >= ${startDate}
+      AND category != 'RND'
     GROUP BY TO_CHAR(date, 'YYYY-MM')
     ORDER BY month ASC
   `;

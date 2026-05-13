@@ -41,6 +41,13 @@ enum OrderStatus {
   RETURNED
 }
 
+enum MarketingPurpose {
+  ENDORSEMENT
+  SAMPLING
+  EVENT
+  OTHER
+}
+
 enum MovementType {
   RESTOCK
   SALE
@@ -48,6 +55,7 @@ enum MovementType {
   ADJUSTMENT
   PADEL_DELIVERY
   RND_USAGE
+  MARKETING_GIVEAWAY
 }
 
 enum RndStatus {
@@ -151,10 +159,12 @@ model Product {
   isActive     Boolean @default(true)
   createdAt    DateTime @default(now())
 
-  flavors          Flavor[]
-  inventory        Inventory[]
+  flavors            Flavor[]
+  inventory          Inventory[]
   inventoryMovements InventoryMovement[]
-  orderItems       PlatformOrderItem[]
+  orderItems         PlatformOrderItem[]
+  giveawayItems      MarketingGiveawayItem[]
+  rndUsages          RndInventoryUsage[]
 
   @@map("products")
 }
@@ -167,13 +177,15 @@ model Flavor {
   colorHex  String?
   createdAt DateTime @default(now())
 
-  product            Product             @relation(fields: [productId], references: [id])
+  product            Product                 @relation(fields: [productId], references: [id])
   inventory          Inventory[]
   inventoryMovements InventoryMovement[]
   orderItems         PlatformOrderItem[]
   deliveryItems      PadelDeliveryItem[]
   padelSales         PadelSale[]
   rndProjects        RndProject[]
+  giveawayItems      MarketingGiveawayItem[]
+  rndUsages          RndInventoryUsage[]
 
   @@map("flavors")
 }
@@ -293,8 +305,9 @@ model RndExpense {
   amount        Decimal  @db.Decimal(15, 2)
   subCategory   String?
 
-  project     RndProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  transaction Transaction? @relation(fields: [transactionId], references: [id])
+  project         RndProject          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  transaction     Transaction?        @relation(fields: [transactionId], references: [id])
+  inventoryUsages RndInventoryUsage[]
 
   @@map("rnd_expenses")
 }
@@ -361,4 +374,47 @@ model ImportLog {
   completedAt DateTime?
 
   @@map("import_logs")
+}
+
+model MarketingGiveaway {
+  id        String           @id @default(cuid())
+  date      DateTime         @db.Date
+  recipient String
+  purpose   MarketingPurpose
+  notes     String?
+  createdAt DateTime         @default(now())
+
+  items MarketingGiveawayItem[]
+
+  @@map("marketing_giveaways")
+}
+
+model MarketingGiveawayItem {
+  id         String  @id @default(cuid())
+  giveawayId String
+  productId  String
+  flavorId   String?
+  quantity   Int
+  unitCost   Decimal @db.Decimal(15, 2)
+
+  giveaway MarketingGiveaway @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
+  product  Product           @relation(fields: [productId], references: [id])
+  flavor   Flavor?           @relation(fields: [flavorId], references: [id])
+
+  @@map("marketing_giveaway_items")
+}
+
+model RndInventoryUsage {
+  id        String  @id @default(cuid())
+  expenseId String
+  productId String
+  flavorId  String?
+  quantity  Int
+  unitCost  Decimal @db.Decimal(15, 2)
+
+  expense RndExpense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  product Product    @relation(fields: [productId], references: [id])
+  flavor  Flavor?    @relation(fields: [flavorId], references: [id])
+
+  @@map("rnd_inventory_usages")
 }

@@ -14,7 +14,7 @@ import {
   Cell,
   Legend,
 } from "recharts";
-import { TrendingUp, TrendingDown, DollarSign, Wallet } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Wallet, Banknote, Package, FlaskConical, Megaphone, BarChart2 } from "lucide-react";
 import { CATEGORY_COLORS, CATEGORY_LABELS, type TransactionCategory } from "@/types";
 
 type PLData = {
@@ -29,6 +29,14 @@ type CashFlowMonth = {
   moneyIn: number;
   moneyOut: number;
   net: number;
+};
+
+type AssetsData = {
+  cashBalance: number;
+  inventoryValue: number;
+  totalAssets: number;
+  rndThisMonth: number;
+  marketingGiveawayValue: number;
 };
 
 function KPICard({
@@ -67,6 +75,7 @@ function KPICard({
 export function DashboardOverview() {
   const [pl, setPL] = useState<PLData | null>(null);
   const [cashFlow, setCashFlow] = useState<CashFlowMonth[]>([]);
+  const [assets, setAssets] = useState<AssetsData | null>(null);
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
@@ -78,6 +87,9 @@ export function DashboardOverview() {
     fetch("/api/finance/cash-flow?months=6")
       .then((r) => r.json())
       .then(setCashFlow);
+    fetch("/api/dashboard/assets")
+      .then((r) => r.json())
+      .then(setAssets);
   }, [currentMonth, currentYear]);
 
   const expenseByCategory = pl
@@ -185,6 +197,73 @@ export function DashboardOverview() {
               No expense data yet
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Asset Summary */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">Asset Summary</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-3">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
+            <div className="p-2.5 bg-green-50 rounded-xl shrink-0">
+              <Banknote size={20} className="text-green-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500 font-medium">Cash Balance</p>
+              <p className="text-lg font-bold text-gray-900 truncate">
+                {assets ? formatIDR(assets.cashBalance) : "—"}
+              </p>
+              <p className="text-xs text-gray-400 hidden sm:block">All-time net cash</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
+            <div className="p-2.5 bg-blue-50 rounded-xl shrink-0">
+              <Package size={20} className="text-blue-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500 font-medium">Inventory Value</p>
+              <p className="text-lg font-bold text-gray-900 truncate">
+                {assets ? formatIDR(assets.inventoryValue) : "—"}
+              </p>
+              <p className="text-xs text-gray-400 hidden sm:block">Stock × cost price</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-blue-200 bg-blue-50 p-4 flex items-center gap-4">
+            <div className="p-2.5 bg-blue-600 rounded-xl shrink-0">
+              <BarChart2 size={20} className="text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-blue-700 font-medium">Total Assets</p>
+              <p className="text-lg font-bold text-blue-900 truncate">
+                {assets ? formatIDR(assets.totalAssets) : "—"}
+              </p>
+              <p className="text-xs text-blue-500 hidden sm:block">Cash + Inventory</p>
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:gap-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+            <div className="p-2 bg-purple-50 rounded-lg shrink-0">
+              <FlaskConical size={16} className="text-purple-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500">R&D This Month</p>
+              <p className="text-base font-semibold text-gray-900 truncate">
+                {assets ? formatIDR(assets.rndThisMonth) : "—"}
+              </p>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+            <div className="p-2 bg-orange-50 rounded-lg shrink-0">
+              <Megaphone size={16} className="text-orange-500" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500">Marketing Giveaways</p>
+              <p className="text-base font-semibold text-gray-900 truncate">
+                {assets ? formatIDR(assets.marketingGiveawayValue) : "—"}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
