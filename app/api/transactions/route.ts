@@ -20,7 +20,7 @@ export async function GET(req: Request) {
   if (from || to) {
     where.date = {
       ...(from ? { gte: new Date(from) } : {}),
-      ...(to ? { lte: new Date(to) } : {}),
+      ...(to ? { lte: new Date(to + "T23:59:59.999Z") } : {}),
     };
   }
   if (referenceIdNull) where.referenceId = null;
