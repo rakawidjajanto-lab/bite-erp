@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   ArrowLeftRight,
@@ -15,8 +15,10 @@ import {
   ShoppingCart,
   Settings,
   X,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useState } from "react";
 
 const nav = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -34,6 +36,19 @@ const nav = [
 
 export function Sidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function handleLogout() {
+    setLoggingOut(true);
+    const deviceFingerprint = localStorage.getItem("bite-device-id") ?? undefined;
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceFingerprint }),
+    });
+    router.push("/login");
+  }
 
   return (
     <aside className="w-64 min-h-screen bg-gray-900 text-white flex flex-col shrink-0">
@@ -76,8 +91,16 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
           );
         })}
       </nav>
-      <div className="p-4 border-t border-gray-800 text-xs text-gray-500">
-        v0.1.0
+      <div className="p-3 border-t border-gray-800 space-y-1">
+        <button
+          onClick={handleLogout}
+          disabled={loggingOut}
+          className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium w-full text-gray-400 hover:bg-gray-800 hover:text-white transition-colors disabled:opacity-50"
+        >
+          <LogOut size={18} />
+          {loggingOut ? "Signing out…" : "Sign out"}
+        </button>
+        <p className="text-xs text-gray-600 px-3 pb-1">v0.1.0</p>
       </div>
     </aside>
   );

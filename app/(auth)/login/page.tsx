@@ -1,27 +1,45 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+
+function getDeviceFingerprint(): string {
+  const key = "bite-device-id";
+  let deviceId = localStorage.getItem(key);
+  if (!deviceId) {
+    deviceId = crypto.randomUUID();
+    localStorage.setItem(key, deviceId);
+  }
+  return btoa(`${deviceId}:${navigator.userAgent}`).slice(0, 64);
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClient();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-    } else {
+
+    const deviceFingerprint = getDeviceFingerprint();
+
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, rememberMe, deviceFingerprint }),
+    });
+
+    if (res.ok) {
       router.push("/dashboard");
+    } else {
+      const data = await res.json();
+      setError(data.error ?? "Login failed");
+      setLoading(false);
     }
   }
 
@@ -59,15 +77,27 @@ export default function LoginPage() {
               required
             />
           </div>
+          <div className="flex items-center gap-2">
+            <input
+              id="remember"
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="remember" className="text-sm text-gray-600 cursor-pointer">
+              Remember me for 15 days
+            </label>
+          </div>
           {error && (
-            <p className="text-red-600 text-sm bg-red-50 p-2 rounded">{error}</p>
+            <p className="text-red-600 text-sm bg-red-50 p-3 rounded-lg">{error}</p>
           )}
           <button
             type="submit"
             disabled={loading}
             className="w-full bg-blue-600 text-white rounded-lg py-2.5 font-medium hover:bg-blue-700 disabled:opacity-50 transition"
           >
-            {loading ? "Signing in..." : "Sign in"}
+            {loading ? "Signing in…" : "Sign in"}
           </button>
         </form>
       </div>
