@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 
 export type ParsedRndExpense = {
+  projectName: string;
   date: string;
   description: string;
   subCategory: string;
@@ -53,6 +54,7 @@ export function parseRndCsv(buffer: ArrayBuffer, fileName = "import.csv"): Parse
 
   return rows
     .map((row) => ({
+      projectName: String(row["projectName"] ?? row["project_name"] ?? row["Project Name"] ?? row["project"] ?? row["Project"] ?? "").trim(),
       date: parseDate(row["date"] ?? row["Date"] ?? row["Tanggal"]),
       description: String(row["description"] ?? row["Description"] ?? row["Keterangan"] ?? "").trim(),
       subCategory: normalizeSubCategory(String(row["subCategory"] ?? row["Sub Category"] ?? row["category"] ?? row["Category"] ?? "other")),

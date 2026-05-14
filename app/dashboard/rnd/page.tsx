@@ -59,7 +59,10 @@ export default function RndPage() {
     subCategory: "ingredients",
   });
   const [inventoryItems, setInventoryItems] = useState<FormInventoryItem[]>([]);
+  // Per-project import (kept for backwards compat inside project view)
   const [showImport, setShowImport] = useState<string | null>(null);
+  // Global import (top-level, uses projectName column)
+  const [showGlobalImport, setShowGlobalImport] = useState(false);
   const [importRows, setImportRows] = useState<ParsedRndExpense[]>([]);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
@@ -132,13 +135,16 @@ export default function RndPage() {
     reader.readAsArrayBuffer(file);
   }
 
-  async function handleRndImport(projectId: string) {
+  async function handleRndImport(projectId: string | null) {
     if (!importRows.length) return;
     setImporting(true);
+    const body = projectId
+      ? { projectId, rows: importRows }
+      : { rows: importRows };
     const res = await fetch("/api/rnd/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId, rows: importRows }),
+      body: JSON.stringify(body),
     });
     const result = await res.json();
     setImportResult(result);
@@ -146,11 +152,20 @@ export default function RndPage() {
     fetchProjects();
   }
 
+  // Template for per-project import (no projectName column needed)
   const RND_TEMPLATE =
     "data:text/csv;charset=utf-8,date,description,subCategory,amount\n" +
     "2024-01-15,Matcha powder trial,ingredients,150000\n" +
     "2024-01-16,pH testing kit,equipment,85000\n" +
     "2024-01-17,Taste testing session,testing,50000";
+
+  // Template for global import (projectName column required)
+  const RND_GLOBAL_TEMPLATE =
+    "data:text/csv;charset=utf-8,projectName,date,description,subCategory,amount\n" +
+    "Matcha Trial Q2,2024-01-15,Matcha powder purchase,ingredients,150000\n" +
+    "Matcha Trial Q2,2024-01-16,pH testing kit,equipment,85000\n" +
+    "Vanilla Rework,2024-01-17,Taste testing session,testing,50000\n" +
+    "Vanilla Rework,2024-01-18,Vanilla extract batch,ingredients,200000";
 
   return (
     <>
@@ -161,13 +176,22 @@ export default function RndPage() {
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">R&D Projects</h2>
             <p className="text-sm text-gray-500">Expenses tracked separately — not mixed into financial totals</p>
           </div>
-          <button
-            onClick={() => setShowNewProject(true)}
-            className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition min-h-[44px]"
-          >
-            <Plus size={15} />
-            New Project
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setShowGlobalImport(true); setImportRows([]); setImportResult(null); }}
+              className="flex items-center gap-1.5 border border-gray-300 text-gray-600 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition min-h-[44px]"
+            >
+              <Upload size={15} />
+              Import CSV
+            </button>
+            <button
+              onClick={() => setShowNewProject(true)}
+              className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition min-h-[44px]"
+            >
+              <Plus size={15} />
+              New Project
+            </button>
+          </div>
         </div>
 
         <div className="space-y-3">
@@ -455,6 +479,90 @@ export default function RndPage() {
                 {!importResult && (
                   <button
                     onClick={() => handleRndImport(showImport)}
+                    disabled={importing || importRows.length === 0}
+                    className="flex-1 bg-blue-600 text-white rounded-xl py-2.5 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {importing ? "Importing..." : `Import ${importRows.length} rows`}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showGlobalImport && (
+        <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-3 sm:p-6">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 sticky top-0 bg-white z-10">
+              <h2 className="font-semibold text-gray-900">Import R&D Expenses (All Projects)</h2>
+              <button onClick={() => setShowGlobalImport(false)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-700 space-y-1">
+                <p className="font-medium">Columns: <code className="bg-blue-100 px-1 rounded">projectName, date, description, subCategory, amount</code></p>
+                <p>If <strong>projectName</strong> matches an existing project it is used; otherwise a new project is created automatically.</p>
+                <a href={RND_GLOBAL_TEMPLATE} download="rnd_global_import_template.csv" className="flex items-center gap-1 text-blue-600 hover:text-blue-700 mt-1.5 font-medium">
+                  <Download size={12} /> Download template CSV
+                </a>
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-500 mb-1.5 block font-medium">Select CSV / Excel file</label>
+                <input
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  onChange={handleRndFileSelect}
+                  className="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+              </div>
+
+              {importRows.length > 0 && !importResult && (
+                <div>
+                  <p className="text-xs font-medium text-gray-600 mb-2">{importRows.length} rows ready to import</p>
+                  <div className="overflow-x-auto rounded-xl border border-gray-200 max-h-48">
+                    <table className="w-full text-xs min-w-[500px]">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Project</th>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Date</th>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Description</th>
+                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Category</th>
+                          <th className="text-right px-3 py-2 text-gray-500 font-medium">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {importRows.slice(0, 20).map((row, i) => (
+                          <tr key={i}>
+                            <td className="px-3 py-2 text-gray-700 max-w-[120px] truncate">{row.projectName || <span className="text-red-400">missing</span>}</td>
+                            <td className="px-3 py-2 text-gray-500">{row.date}</td>
+                            <td className="px-3 py-2 text-gray-800 max-w-[140px] truncate">{row.description}</td>
+                            <td className="px-3 py-2 text-gray-500">{row.subCategory}</td>
+                            <td className="px-3 py-2 text-right text-red-500 font-medium">{row.amount.toLocaleString("id-ID")}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {importRows.length > 20 && <p className="text-xs text-gray-400 mt-1">Showing first 20 of {importRows.length} rows</p>}
+                </div>
+              )}
+
+              {importResult && (
+                <div className="bg-green-50 rounded-xl px-4 py-3 text-sm text-green-800 space-y-0.5">
+                  <p className="font-semibold">Import complete</p>
+                  <p>{importResult.imported} imported · {importResult.skipped} skipped · {importResult.failed} failed</p>
+                  {importResult.failed > 0 && <p className="text-xs text-green-600">Failed rows are missing a projectName or had no description/amount.</p>}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <button onClick={() => setShowGlobalImport(false)} className="flex-1 border border-gray-300 text-gray-600 rounded-xl py-2.5 text-sm font-medium">
+                  {importResult ? "Close" : "Cancel"}
+                </button>
+                {!importResult && (
+                  <button
+                    onClick={() => handleRndImport(null)}
                     disabled={importing || importRows.length === 0}
                     className="flex-1 bg-blue-600 text-white rounded-xl py-2.5 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
                   >

@@ -77,8 +77,14 @@ export function parseExcelFile(buffer: ArrayBuffer, fileName = "import.xlsx"): P
       const description =
         String(row["Description"] ?? row["description"] ?? row["Keterangan"] ?? "").trim();
       const categoryRaw = String(row["Category"] ?? row["category"] ?? row["Kategori"] ?? "");
-      const amountIn = parseAmount(row["Money In (Credit)"] ?? row["Money In"] ?? row["Pemasukan"]);
-      const amountOut = parseAmount(row["Money Out (Debit)"] ?? row["Money Out"] ?? row["Pengeluaran"]);
+      const amountIn = parseAmount(
+        row["Money In (Credit)"] ?? row["Money In"] ?? row["Money_In"] ?? row["money_in"] ??
+        row["Amount In"] ?? row["amount_in"] ?? row["in"] ?? row["In"] ?? row["Pemasukan"]
+      );
+      const amountOut = parseAmount(
+        row["Money Out (Debit)"] ?? row["Money Out"] ?? row["Money_Out"] ?? row["money_out"] ??
+        row["Amount Out"] ?? row["amount_out"] ?? row["out"] ?? row["Out"] ?? row["Pengeluaran"]
+      );
 
       let date: string | null = null;
       if (typeof dateRaw === "number") {
