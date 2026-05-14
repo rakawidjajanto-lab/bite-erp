@@ -25,7 +25,7 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
         <Sidebar onClose={() => setOpen(false)} />
       </div>
 
-      <main className="flex-1 flex flex-col overflow-hidden min-w-0">{children}</main>
+      <main className="flex-1 flex flex-col min-w-0">{children}</main>
     </div>
   );
 }
