@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { formatIDR } from "@/lib/formatters/currency";
+import { MonthYearPicker, monthBounds } from "@/components/filters/MonthYearPicker";
 import { Plus, Trash2, X, Megaphone, Upload, Download } from "lucide-react";
 import { parseMarketingCsv, type ParsedGiveawayRow } from "@/lib/import/marketing-parser";
 
 type Product = { id: string; name: string; unitCost: number; flavors: { id: string; name: string }[] };
 type GiveawayItem = { id: string; quantity: number; unitCost: string; product: { name: string }; flavor: { name: string; colorHex: string | null } | null };
 type Giveaway = { id: string; date: string; recipient: string; purpose: string; notes: string | null; items: GiveawayItem[] };
+type DirectExpense = { id: string; date: string; description: string; amountOut: string | null };
 
 const PURPOSE_LABELS: Record<string, string> = {
   ENDORSEMENT: "Endorsement",
@@ -27,8 +29,12 @@ const PURPOSE_COLORS: Record<string, string> = {
 type FormItem = { productId: string; flavorId: string; quantity: number };
 
 export default function MarketingPage() {
+  const now = new Date();
   const [giveaways, setGiveaways] = useState<Giveaway[]>([]);
+  const [directExpenses, setDirectExpenses] = useState<DirectExpense[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -36,19 +42,21 @@ export default function MarketingPage() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
   const [form, setForm] = useState({
-    date: new Date().toISOString().split("T")[0],
+    date: now.toISOString().split("T")[0],
     recipient: "",
     purpose: "ENDORSEMENT",
     notes: "",
   });
   const [items, setItems] = useState<FormItem[]>([{ productId: "", flavorId: "", quantity: 1 }]);
 
-  const fetchData = () => {
-    fetch("/api/marketing/giveaways").then((r) => r.json()).then(setGiveaways).catch(() => {});
+  const fetchData = useCallback(() => {
+    const { from, to } = monthBounds(year, month);
+    fetch(`/api/marketing/giveaways?from=${from}&to=${to}`).then((r) => r.json()).then(setGiveaways).catch(() => {});
+    fetch(`/api/transactions?category=MARKETING&referenceIdNull=1&from=${from}&to=${to}&limit=200`).then((r) => r.json()).then((d) => setDirectExpenses(d.items ?? [])).catch(() => {});
     fetch("/api/settings/products").then((r) => r.json()).then(setProducts).catch(() => {});
-  };
+  }, [year, month]);
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   function addItem() {
     setItems((prev) => [...prev, { productId: "", flavorId: "", quantity: 1 }]);
@@ -90,7 +98,7 @@ export default function MarketingPage() {
     });
     setSaving(false);
     setShowForm(false);
-    setForm({ date: new Date().toISOString().split("T")[0], recipient: "", purpose: "ENDORSEMENT", notes: "" });
+    setForm({ date: now.toISOString().split("T")[0], recipient: "", purpose: "ENDORSEMENT", notes: "" });
     setItems([{ productId: "", flavorId: "", quantity: 1 }]);
     fetchData();
   }
@@ -135,12 +143,13 @@ export default function MarketingPage() {
     <>
       <Topbar title="Marketing" />
       <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-4 sm:space-y-5 max-w-2xl">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Giveaways & Endorsements</h2>
             <p className="text-sm text-gray-500">Track free items given for marketing purposes</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <MonthYearPicker year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m); }} />
             <button
               onClick={() => { setShowImport(true); setImportRows([]); setImportResult(null); }}
               className="flex items-center gap-1.5 border border-gray-300 text-gray-600 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition min-h-[44px]"
@@ -206,6 +215,25 @@ export default function MarketingPage() {
           </div>
         )}
       </div>
+
+      {directExpenses.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-gray-700">Direct Marketing Expenses</h3>
+          <div className="bg-white rounded-2xl border border-gray-200 divide-y divide-gray-100">
+            {directExpenses.map((tx) => (
+              <div key={tx.id} className="flex items-center justify-between px-4 py-3">
+                <div>
+                  <p className="text-sm text-gray-900">{tx.description}</p>
+                  <p className="text-xs text-gray-400">{new Date(tx.date).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</p>
+                </div>
+                <p className="text-sm font-bold text-red-500">
+                  {tx.amountOut ? `−${formatIDR(parseFloat(tx.amountOut))}` : "—"}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {showImport && (
         <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-3 sm:p-6">

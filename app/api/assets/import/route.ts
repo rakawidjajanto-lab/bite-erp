@@ -38,6 +38,17 @@ export async function POST(req: Request) {
           notes: row.notes || null,
         },
       });
+
+      await prisma.transaction.create({
+        data: {
+          date: new Date(row.purchaseDate),
+          description: row.name,
+          category: "INVESTMENT",
+          amountOut: row.purchasePrice,
+          source: "EXCEL_IMPORT",
+        },
+      });
+
       imported++;
     } catch {
       failed++;

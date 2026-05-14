@@ -1,8 +1,21 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const from = searchParams.get("from");
+  const to = searchParams.get("to");
+
+  const where: Record<string, unknown> = {};
+  if (from || to) {
+    where.purchaseDate = {
+      ...(from ? { gte: new Date(from) } : {}),
+      ...(to ? { lte: new Date(to) } : {}),
+    };
+  }
+
   const assets = await prisma.physicalAsset.findMany({
+    where,
     orderBy: { purchaseDate: "desc" },
   });
   return NextResponse.json(assets);

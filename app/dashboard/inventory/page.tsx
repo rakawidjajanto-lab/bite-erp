@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Topbar } from "@/components/layout/Topbar";
+import { MonthYearPicker, monthBounds } from "@/components/filters/MonthYearPicker";
 import { Plus, AlertTriangle, Upload, X, Download } from "lucide-react";
 import { parseInventoryCsv, type ParsedInventoryRow } from "@/lib/import/inventory-parser";
 
@@ -14,11 +15,45 @@ type InventoryItem = {
   flavor: { name: string; colorHex: string | null } | null;
 };
 
+type Movement = {
+  id: string;
+  movementType: string;
+  quantityChange: number;
+  notes: string | null;
+  createdAt: string;
+  product: { name: string };
+  flavor: { name: string; colorHex: string | null } | null;
+};
+
 type Product = { id: string; name: string; flavors: { id: string; name: string }[] };
 
+const MOVEMENT_LABELS: Record<string, string> = {
+  RESTOCK: "Restock",
+  SALE: "Sale",
+  WASTE: "Waste",
+  ADJUSTMENT: "Adjustment",
+  PADEL_DELIVERY: "Padel",
+  RND_USAGE: "R&D",
+  MARKETING_GIVEAWAY: "Marketing",
+};
+
+const MOVEMENT_COLORS: Record<string, string> = {
+  RESTOCK: "bg-green-100 text-green-700",
+  SALE: "bg-blue-100 text-blue-700",
+  WASTE: "bg-red-100 text-red-600",
+  ADJUSTMENT: "bg-gray-100 text-gray-600",
+  PADEL_DELIVERY: "bg-purple-100 text-purple-700",
+  RND_USAGE: "bg-orange-100 text-orange-700",
+  MARKETING_GIVEAWAY: "bg-pink-100 text-pink-700",
+};
+
 export default function InventoryPage() {
+  const now = new Date();
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [movements, setMovements] = useState<Movement[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ productId: "", flavorId: "", quantityChange: 0, movementType: "RESTOCK", notes: "" });
   const [saving, setSaving] = useState(false);
@@ -27,12 +62,14 @@ export default function InventoryPage() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
 
-  const fetchInventory = () => {
+  const fetchInventory = useCallback(() => {
     fetch("/api/inventory").then((r) => r.json()).then(setInventory).catch(() => {});
     fetch("/api/settings/products").then((r) => r.json()).then(setProducts).catch(() => {});
-  };
+    const { from, to } = monthBounds(year, month);
+    fetch(`/api/inventory/movements?from=${from}&to=${to}`).then((r) => r.json()).then(setMovements).catch(() => {});
+  }, [year, month]);
 
-  useEffect(() => { fetchInventory(); }, []);
+  useEffect(() => { fetchInventory(); }, [fetchInventory]);
 
   const INVENTORY_TEMPLATE =
     "data:text/csv;charset=utf-8,productName,quantity,unit,costPrice,notes\n" +
@@ -85,7 +122,7 @@ export default function InventoryPage() {
     <>
       <Topbar title="Inventory" />
       <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-4 sm:space-y-5">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Stock Levels</h2>
             {lowStock.length > 0 && (
@@ -95,7 +132,8 @@ export default function InventoryPage() {
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <MonthYearPicker year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m); }} />
             <button
               onClick={() => { setShowImport(true); setImportRows([]); setImportResult(null); }}
               className="flex items-center gap-1.5 border border-gray-300 text-gray-600 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition min-h-[44px]"
@@ -203,6 +241,55 @@ export default function InventoryPage() {
             </div>
           </>
         )}
+        {/* Movements log for selected month */}
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-gray-700">
+            Movements — {new Date(year, month - 1).toLocaleString("default", { month: "long" })} {year}
+          </h3>
+          {movements.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-200 p-6 text-center text-gray-400 text-sm">
+              No movements recorded for this month.
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="text-left py-2.5 px-4 text-gray-500 font-medium text-xs">Date</th>
+                    <th className="text-left py-2.5 px-4 text-gray-500 font-medium text-xs">Product</th>
+                    <th className="text-left py-2.5 px-4 text-gray-500 font-medium text-xs">Type</th>
+                    <th className="text-right py-2.5 px-4 text-gray-500 font-medium text-xs">Qty</th>
+                    <th className="text-left py-2.5 px-4 text-gray-500 font-medium text-xs hidden sm:table-cell">Notes</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {movements.map((m) => (
+                    <tr key={m.id} className="hover:bg-gray-50">
+                      <td className="py-2.5 px-4 text-gray-400 text-xs whitespace-nowrap">
+                        {new Date(m.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <p className="text-sm text-gray-900">{m.product.name}</p>
+                        {m.flavor && <p className="text-xs text-gray-400">{m.flavor.name}</p>}
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${MOVEMENT_COLORS[m.movementType] ?? "bg-gray-100 text-gray-600"}`}>
+                          {MOVEMENT_LABELS[m.movementType] ?? m.movementType}
+                        </span>
+                      </td>
+                      <td className={`py-2.5 px-4 text-right font-semibold text-xs ${m.quantityChange >= 0 ? "text-green-600" : "text-red-500"}`}>
+                        {m.quantityChange >= 0 ? "+" : ""}{m.quantityChange}
+                      </td>
+                      <td className="py-2.5 px-4 text-xs text-gray-400 hidden sm:table-cell max-w-[160px] truncate">
+                        {m.notes || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
 
       {showImport && (

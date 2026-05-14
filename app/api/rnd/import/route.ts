@@ -43,7 +43,7 @@ export async function POST(req: Request) {
     if (!projectId) { failed++; continue; }
 
     try {
-      await prisma.rndExpense.create({
+      const expense = await prisma.rndExpense.create({
         data: {
           projectId,
           date: new Date(row.date),
@@ -52,6 +52,20 @@ export async function POST(req: Request) {
           subCategory: row.subCategory || "other",
         },
       });
+
+      if (row.amount > 0) {
+        await prisma.transaction.create({
+          data: {
+            date: new Date(row.date),
+            description: row.description,
+            category: "RND",
+            amountOut: row.amount,
+            source: "EXCEL_IMPORT",
+            referenceId: expense.id,
+          },
+        });
+      }
+
       imported++;
     } catch {
       failed++;

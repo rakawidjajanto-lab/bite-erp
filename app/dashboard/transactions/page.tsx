@@ -5,6 +5,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { TransactionForm } from "@/components/forms/TransactionForm";
 import { formatIDR } from "@/lib/formatters/currency";
 import { CATEGORY_LABELS, CATEGORY_COLORS, type TransactionCategory } from "@/types";
+import { MonthYearPicker, monthBounds } from "@/components/filters/MonthYearPicker";
 import { Plus, Search, Filter, Trash2, CheckSquare, Square } from "lucide-react";
 import Link from "next/link";
 
@@ -29,10 +30,13 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 export default function TransactionsPage() {
+  const now = new Date();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -44,16 +48,19 @@ export default function TransactionsPage() {
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
+    const { from, to } = monthBounds(year, month);
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (category) params.set("category", category);
-    params.set("limit", "100");
+    params.set("from", from);
+    params.set("to", to);
+    params.set("limit", "200");
     const res = await fetch(`/api/transactions?${params}`);
     const data = await res.json();
     setTransactions(data.items ?? []);
     setTotal(data.total ?? 0);
     setLoading(false);
-  }, [search, category]);
+  }, [search, category, year, month]);
 
   useEffect(() => {
     const t = setTimeout(fetchTransactions, 300);
@@ -168,8 +175,9 @@ export default function TransactionsPage() {
         </div>
 
         {/* Filters */}
-        <div className="flex gap-2 mb-4">
-          <div className="relative flex-1">
+        <div className="flex flex-wrap gap-2 mb-4">
+          <MonthYearPicker year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m); }} />
+          <div className="relative flex-1 min-w-[160px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               className="pl-8 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"

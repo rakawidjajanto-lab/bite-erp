@@ -43,6 +43,20 @@ async function handleInventory(row: ImportRow): Promise<boolean> {
       notes: `CSV import: ${row.description}`,
     },
   });
+
+  const cost = row.amountOut ?? 0;
+  if (cost > 0) {
+    await prisma.transaction.create({
+      data: {
+        date: row.date ? new Date(row.date) : new Date(),
+        description: `Restock: ${productName}`,
+        category: "SUPPLIES",
+        amountOut: cost,
+        source: "EXCEL_IMPORT",
+      },
+    });
+  }
+
   return true;
 }
 
@@ -61,6 +75,19 @@ async function handleAsset(row: ImportRow): Promise<boolean> {
       currentValue,
     },
   });
+
+  if (purchasePrice > 0) {
+    await prisma.transaction.create({
+      data: {
+        date: row.date ? new Date(row.date) : new Date(),
+        description: row.description || "Asset purchase",
+        category: "INVESTMENT",
+        amountOut: purchasePrice,
+        source: "EXCEL_IMPORT",
+      },
+    });
+  }
+
   return true;
 }
 
@@ -75,7 +102,7 @@ async function handleRnd(row: ImportRow): Promise<boolean> {
       select: { id: true },
     });
   }
-  await prisma.rndExpense.create({
+  const expense = await prisma.rndExpense.create({
     data: {
       projectId: project.id,
       date: row.date ? new Date(row.date) : new Date(),
@@ -84,6 +111,21 @@ async function handleRnd(row: ImportRow): Promise<boolean> {
       subCategory: row.subCategory || "other",
     },
   });
+
+  const amount = row.amountOut ?? 0;
+  if (amount > 0) {
+    await prisma.transaction.create({
+      data: {
+        date: row.date ? new Date(row.date) : new Date(),
+        description: row.description || "R&D expense",
+        category: "RND",
+        amountOut: amount,
+        source: "EXCEL_IMPORT",
+        referenceId: expense.id,
+      },
+    });
+  }
+
   return true;
 }
 
@@ -128,6 +170,21 @@ async function handleMarketing(row: ImportRow): Promise<boolean> {
       notes: `CSV import: ${row.recipient}`,
     },
   });
+
+  const totalCost = qty * Number(product.unitCost);
+  if (totalCost > 0) {
+    await prisma.transaction.create({
+      data: {
+        date: row.date ? new Date(row.date) : new Date(),
+        description: `Giveaway – ${row.recipient} (${productName})`,
+        category: "MARKETING",
+        amountOut: totalCost,
+        source: "EXCEL_IMPORT",
+        referenceId: giveaway.id,
+      },
+    });
+  }
+
   return true;
 }
 

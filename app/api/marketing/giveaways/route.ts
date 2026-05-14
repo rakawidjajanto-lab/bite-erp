@@ -3,8 +3,21 @@ import { prisma } from "@/lib/db";
 
 type GiveawayItem = { productId: string; flavorId?: string; quantity: number };
 
-export async function GET() {
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const from = searchParams.get("from");
+  const to = searchParams.get("to");
+
+  const where: Record<string, unknown> = {};
+  if (from || to) {
+    where.date = {
+      ...(from ? { gte: new Date(from) } : {}),
+      ...(to ? { lte: new Date(to) } : {}),
+    };
+  }
+
   const giveaways = await prisma.marketingGiveaway.findMany({
+    where,
     include: {
       items: {
         include: {

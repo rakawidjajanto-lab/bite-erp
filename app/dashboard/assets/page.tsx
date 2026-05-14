@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { formatIDR } from "@/lib/formatters/currency";
+import { MonthYearPicker, monthBounds } from "@/components/filters/MonthYearPicker";
 import { Plus, X, Landmark, TrendingDown, TrendingUp, Upload, Download } from "lucide-react";
 import { parseAssetsCsv, type ParsedAssetRow } from "@/lib/import/assets-parser";
 
@@ -36,7 +37,10 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 export default function AssetsPage() {
+  const now = new Date();
   const [assets, setAssets] = useState<PhysicalAsset[]>([]);
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -46,17 +50,18 @@ export default function AssetsPage() {
   const [form, setForm] = useState({
     name: "",
     category: "MACHINE",
-    purchaseDate: new Date().toISOString().split("T")[0],
+    purchaseDate: now.toISOString().split("T")[0],
     purchasePrice: "",
     currentValue: "",
     notes: "",
   });
 
-  const fetchAssets = () => {
-    fetch("/api/assets").then((r) => r.json()).then(setAssets).catch(() => {});
-  };
+  const fetchAssets = useCallback(() => {
+    const { from, to } = monthBounds(year, month);
+    fetch(`/api/assets?from=${from}&to=${to}`).then((r) => r.json()).then(setAssets).catch(() => {});
+  }, [year, month]);
 
-  useEffect(() => { fetchAssets(); }, []);
+  useEffect(() => { fetchAssets(); }, [fetchAssets]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -140,12 +145,13 @@ export default function AssetsPage() {
           </div>
         )}
 
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Physical Assets</h2>
             <p className="text-sm text-gray-500">Machines, freezers, furniture, vehicles</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <MonthYearPicker year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m); }} />
             <button
               onClick={() => { setShowImport(true); setImportRows([]); setImportResult(null); }}
               className="flex items-center gap-1.5 border border-gray-300 text-gray-600 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition min-h-[44px]"

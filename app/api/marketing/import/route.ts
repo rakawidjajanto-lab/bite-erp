@@ -62,6 +62,20 @@ export async function POST(req: Request) {
         },
       });
 
+      const totalCost = Number(product.unitCost) * row.quantity;
+      if (totalCost > 0) {
+        await prisma.transaction.create({
+          data: {
+            date: new Date(row.date),
+            description: `Giveaway – ${row.recipient} (${row.productName})`,
+            category: "MARKETING",
+            amountOut: totalCost,
+            source: "EXCEL_IMPORT",
+            referenceId: giveaway.id,
+          },
+        });
+      }
+
       imported++;
     } catch {
       failed++;

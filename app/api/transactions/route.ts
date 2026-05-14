@@ -7,15 +7,23 @@ export async function GET(req: Request) {
   const category = searchParams.get("category") ?? undefined;
   const source = searchParams.get("source") ?? undefined;
   const search = searchParams.get("search") ?? undefined;
+  const from = searchParams.get("from") ?? undefined;
+  const to = searchParams.get("to") ?? undefined;
+  const referenceIdNull = searchParams.get("referenceIdNull") === "1";
   const page = parseInt(searchParams.get("page") ?? "1");
   const limit = parseInt(searchParams.get("limit") ?? "50");
 
   const where: Record<string, unknown> = {};
   if (category) where.category = category;
   if (source) where.source = source;
-  if (search) {
-    where.description = { contains: search, mode: "insensitive" };
+  if (search) where.description = { contains: search, mode: "insensitive" };
+  if (from || to) {
+    where.date = {
+      ...(from ? { gte: new Date(from) } : {}),
+      ...(to ? { lte: new Date(to) } : {}),
+    };
   }
+  if (referenceIdNull) where.referenceId = null;
 
   const [items, total] = await Promise.all([
     prisma.transaction.findMany({

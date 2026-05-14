@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { formatIDR } from "@/lib/formatters/currency";
+import { MonthYearPicker, monthBounds } from "@/components/filters/MonthYearPicker";
 import { Plus, ChevronDown, ChevronUp, Package, Trash2, Upload, X, Download } from "lucide-react";
 import { parseRndCsv, type ParsedRndExpense } from "@/lib/import/rnd-parser";
 
@@ -37,6 +38,7 @@ type RndProject = {
 
 type Product = { id: string; name: string; unitCost: number; flavors: { id: string; name: string }[] };
 type FormInventoryItem = { productId: string; flavorId: string; quantity: number };
+type DirectExpense = { id: string; date: string; description: string; amountOut: string | null };
 
 const STATUS_COLORS: Record<string, string> = {
   PLANNING: "bg-gray-100 text-gray-600",
@@ -46,34 +48,39 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function RndPage() {
+  const now = new Date();
   const [projects, setProjects] = useState<RndProject[]>([]);
+  const [directExpenses, setDirectExpenses] = useState<DirectExpense[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showNewProject, setShowNewProject] = useState(false);
   const [showExpense, setShowExpense] = useState<string | null>(null);
-  const [newProject, setNewProject] = useState({ name: "", description: "", startDate: new Date().toISOString().split("T")[0] });
+  const [newProject, setNewProject] = useState({ name: "", description: "", startDate: now.toISOString().split("T")[0] });
   const [newExpense, setNewExpense] = useState({
-    date: new Date().toISOString().split("T")[0],
+    date: now.toISOString().split("T")[0],
     description: "",
     amount: 0,
     subCategory: "ingredients",
   });
   const [inventoryItems, setInventoryItems] = useState<FormInventoryItem[]>([]);
-  // Per-project import (kept for backwards compat inside project view)
   const [showImport, setShowImport] = useState<string | null>(null);
-  // Global import (top-level, uses projectName column)
   const [showGlobalImport, setShowGlobalImport] = useState(false);
   const [importRows, setImportRows] = useState<ParsedRndExpense[]>([]);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
 
-  const fetchProjects = () =>
-    fetch("/api/rnd").then((r) => r.json()).then(setProjects).catch(() => {});
+  const fetchProjects = useCallback(() => {
+    const { from, to } = monthBounds(year, month);
+    fetch(`/api/rnd?from=${from}&to=${to}`).then((r) => r.json()).then(setProjects).catch(() => {});
+    fetch(`/api/transactions?category=RND&referenceIdNull=1&from=${from}&to=${to}&limit=200`).then((r) => r.json()).then((d) => setDirectExpenses(d.items ?? [])).catch(() => {});
+  }, [year, month]);
 
   useEffect(() => {
     fetchProjects();
     fetch("/api/settings/products").then((r) => r.json()).then(setProducts).catch(() => {});
-  }, []);
+  }, [fetchProjects]);
 
   async function createProject(e: React.FormEvent) {
     e.preventDefault();
@@ -171,12 +178,13 @@ export default function RndPage() {
     <>
       <Topbar title="R&D" />
       <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-4 sm:space-y-5">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">R&D Projects</h2>
             <p className="text-sm text-gray-500">Expenses tracked separately — not mixed into financial totals</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <MonthYearPicker year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m); }} />
             <button
               onClick={() => { setShowGlobalImport(true); setImportRows([]); setImportResult(null); }}
               className="flex items-center gap-1.5 border border-gray-300 text-gray-600 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition min-h-[44px]"
@@ -408,6 +416,25 @@ export default function RndPage() {
             </div>
           ))}
         </div>
+
+        {directExpenses.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-gray-700">Direct R&D Expenses</h3>
+            <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+              {directExpenses.map((tx) => (
+                <div key={tx.id} className="flex items-center justify-between px-4 py-3">
+                  <div>
+                    <p className="text-sm text-gray-900">{tx.description}</p>
+                    <p className="text-xs text-gray-400">{new Date(tx.date).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</p>
+                  </div>
+                  <p className="text-sm font-bold text-red-500">
+                    {tx.amountOut ? `−${formatIDR(parseFloat(tx.amountOut))}` : "—"}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {showImport && (

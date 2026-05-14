@@ -5,6 +5,7 @@ type InventoryRow = {
   productName: string;
   quantity: number;
   unit?: string;
+  unitCost?: number;
   notes?: string;
 };
 
@@ -58,6 +59,19 @@ export async function POST(req: Request) {
           notes: row.notes || `CSV import: ${row.productName}`,
         },
       });
+
+      const cost = (row.unitCost ?? 0) * row.quantity;
+      if (cost > 0) {
+        await prisma.transaction.create({
+          data: {
+            date: new Date(),
+            description: `Restock: ${row.productName}`,
+            category: "SUPPLIES",
+            amountOut: cost,
+            source: "EXCEL_IMPORT",
+          },
+        });
+      }
 
       imported++;
     } catch {

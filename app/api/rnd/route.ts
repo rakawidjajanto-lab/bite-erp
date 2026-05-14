@@ -1,11 +1,28 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const from = searchParams.get("from");
+  const to = searchParams.get("to");
+
+  const expenseWhere: Record<string, unknown> = {};
+  if (from || to) {
+    expenseWhere.date = {
+      ...(from ? { gte: new Date(from) } : {}),
+      ...(to ? { lte: new Date(to) } : {}),
+    };
+  }
+
   const projects = await prisma.rndProject.findMany({
+    where:
+      from || to
+        ? { expenses: { some: expenseWhere } }
+        : undefined,
     include: {
       targetFlavor: { select: { name: true } },
       expenses: {
+        where: expenseWhere,
         include: {
           inventoryUsages: {
             include: {
