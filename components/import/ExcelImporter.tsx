@@ -157,8 +157,11 @@ export function ExcelImporter() {
             </button>
           </div>
 
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden max-h-[500px] overflow-y-auto">
-            <table className="w-full text-sm">
+          <div
+            className="bg-white border border-gray-200 rounded-xl max-h-[500px] overflow-y-auto"
+            style={{ overflowX: "scroll", WebkitOverflowScrolling: "touch" }}
+          >
+            <table className="text-sm min-w-[900px] w-full">
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                 <tr>
                   <th className="text-left py-3 px-4 text-gray-500 font-medium">Date</th>
