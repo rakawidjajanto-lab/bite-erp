@@ -19,6 +19,15 @@ type Transaction = {
   notes: string | null;
 };
 
+const SOURCE_LABELS: Record<string, string> = {
+  MANUAL: "Manual",
+  TOKOPEDIA: "Tokopedia",
+  SHOPEE: "Shopee",
+  PADEL: "Padel",
+  EXCEL_IMPORT: "Import",
+  ORDER: "Order",
+};
+
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [total, setTotal] = useState(0);
@@ -51,7 +60,6 @@ export default function TransactionsPage() {
     return () => clearTimeout(t);
   }, [fetchTransactions]);
 
-  // Clear selection when exiting bulk mode
   function exitBulk() {
     setBulkMode(false);
     setSelected(new Set());
@@ -199,134 +207,82 @@ export default function TransactionsPage() {
             </button>
           </div>
         ) : (
-          <>
-            {/* Desktop table */}
-            <div className="hidden sm:block bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
+          /* Scrollable table — always visible on all screen sizes */
+          <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+            <table className="text-sm min-w-[780px] w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  {bulkMode && (
+                    <th className="py-3 px-3 w-10">
+                      <button onClick={toggleAll}>
+                        {allSelected
+                          ? <CheckSquare size={16} className="text-blue-600" />
+                          : <Square size={16} className="text-gray-400" />}
+                      </button>
+                    </th>
+                  )}
+                  <th className="text-left py-3 px-4 text-gray-500 font-medium whitespace-nowrap">Date</th>
+                  <th className="text-left py-3 px-4 text-gray-500 font-medium">Description</th>
+                  <th className="text-left py-3 px-4 text-gray-500 font-medium whitespace-nowrap">Category</th>
+                  <th className="text-left py-3 px-4 text-gray-500 font-medium whitespace-nowrap">Platform</th>
+                  <th className="text-right py-3 px-4 text-green-600 font-medium whitespace-nowrap">Money In</th>
+                  <th className="text-right py-3 px-4 text-red-500 font-medium whitespace-nowrap">Money Out</th>
+                  <th className="py-3 px-3 w-10" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {transactions.map((tx) => (
+                  <tr
+                    key={tx.id}
+                    className={`hover:bg-gray-50 transition ${bulkMode && selected.has(tx.id) ? "bg-blue-50" : ""}`}
+                    onClick={bulkMode ? () => toggleSelect(tx.id) : undefined}
+                  >
                     {bulkMode && (
-                      <th className="py-3 px-3 w-10">
-                        <button onClick={toggleAll}>
-                          {allSelected
-                            ? <CheckSquare size={16} className="text-blue-600" />
-                            : <Square size={16} className="text-gray-400" />}
-                        </button>
-                      </th>
-                    )}
-                    <th className="text-left py-3 px-4 text-gray-500 font-medium">Date</th>
-                    <th className="text-left py-3 px-4 text-gray-500 font-medium">Description</th>
-                    <th className="text-left py-3 px-4 text-gray-500 font-medium">Category</th>
-                    <th className="text-right py-3 px-4 text-green-600 font-medium">Money In</th>
-                    <th className="text-right py-3 px-4 text-red-500 font-medium">Money Out</th>
-                    <th className="py-3 px-3 w-10" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {transactions.map((tx) => (
-                    <tr
-                      key={tx.id}
-                      className={`hover:bg-gray-50 transition ${bulkMode && selected.has(tx.id) ? "bg-blue-50" : ""}`}
-                      onClick={bulkMode ? () => toggleSelect(tx.id) : undefined}
-                    >
-                      {bulkMode && (
-                        <td className="py-3 px-3">
-                          {selected.has(tx.id)
-                            ? <CheckSquare size={16} className="text-blue-600" />
-                            : <Square size={16} className="text-gray-400" />}
-                        </td>
-                      )}
-                      <td className="py-3 px-4 text-gray-500 whitespace-nowrap">
-                        {new Date(tx.date).toLocaleDateString("id-ID")}
-                      </td>
-                      <td className="py-3 px-4 text-gray-900 max-w-xs truncate">{tx.description}</td>
-                      <td className="py-3 px-4">
-                        <span
-                          className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium text-white"
-                          style={{ backgroundColor: CATEGORY_COLORS[tx.category] ?? "#94a3b8" }}
-                        >
-                          {CATEGORY_LABELS[tx.category] ?? tx.category}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-right text-green-600 font-medium">
-                        {tx.amountIn ? formatIDR(parseFloat(tx.amountIn)) : "—"}
-                      </td>
-                      <td className="py-3 px-4 text-right text-red-500 font-medium">
-                        {tx.amountOut ? formatIDR(parseFloat(tx.amountOut)) : "—"}
-                      </td>
                       <td className="py-3 px-3">
-                        {!bulkMode && (
-                          <button
-                            onClick={() => deleteOne(tx.id)}
-                            disabled={deleting}
-                            className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Mobile card list */}
-            <div className="sm:hidden space-y-2">
-              {transactions.map((tx) => (
-                <div
-                  key={tx.id}
-                  className={`bg-white rounded-xl border px-4 py-3 transition ${bulkMode && selected.has(tx.id) ? "border-blue-400 bg-blue-50" : "border-gray-200"}`}
-                  onClick={bulkMode ? () => toggleSelect(tx.id) : undefined}
-                >
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    {bulkMode && (
-                      <div className="shrink-0 pt-0.5">
                         {selected.has(tx.id)
                           ? <CheckSquare size={16} className="text-blue-600" />
                           : <Square size={16} className="text-gray-400" />}
-                      </div>
+                      </td>
                     )}
-                    <p className="text-sm font-medium text-gray-900 flex-1 min-w-0 truncate">
-                      {tx.description}
-                    </p>
-                    <span
-                      className="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium text-white"
-                      style={{ backgroundColor: CATEGORY_COLORS[tx.category] ?? "#94a3b8" }}
-                    >
-                      {CATEGORY_LABELS[tx.category] ?? tx.category}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-gray-400">
+                    <td className="py-3 px-4 text-gray-500 whitespace-nowrap">
                       {new Date(tx.date).toLocaleDateString("id-ID")}
-                    </p>
-                    <div className="flex items-center gap-3">
-                      {tx.amountIn && (
-                        <p className="text-sm font-semibold text-green-600">
-                          +{formatIDR(parseFloat(tx.amountIn))}
-                        </p>
-                      )}
-                      {tx.amountOut && (
-                        <p className="text-sm font-semibold text-red-500">
-                          −{formatIDR(parseFloat(tx.amountOut))}
-                        </p>
-                      )}
+                    </td>
+                    <td className="py-3 px-4 text-gray-900">
+                      <span className="block max-w-[260px] truncate">{tx.description}</span>
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <span
+                        className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium text-white"
+                        style={{ backgroundColor: CATEGORY_COLORS[tx.category] ?? "#94a3b8" }}
+                      >
+                        {CATEGORY_LABELS[tx.category] ?? tx.category}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-gray-400 text-xs whitespace-nowrap">
+                      {SOURCE_LABELS[tx.source] ?? tx.source}
+                    </td>
+                    <td className="py-3 px-4 text-right text-green-600 font-medium whitespace-nowrap">
+                      {tx.amountIn ? formatIDR(parseFloat(tx.amountIn)) : "—"}
+                    </td>
+                    <td className="py-3 px-4 text-right text-red-500 font-medium whitespace-nowrap">
+                      {tx.amountOut ? formatIDR(parseFloat(tx.amountOut)) : "—"}
+                    </td>
+                    <td className="py-3 px-3">
                       {!bulkMode && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); deleteOne(tx.id); }}
+                          onClick={() => deleteOne(tx.id)}
                           disabled={deleting}
                           className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
                         >
                           <Trash2 size={14} />
                         </button>
                       )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
