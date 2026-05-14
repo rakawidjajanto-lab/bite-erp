@@ -48,12 +48,11 @@ const MOVEMENT_COLORS: Record<string, string> = {
 };
 
 export default function InventoryPage() {
-  const now = new Date();
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState<number | null>(null);
+  const [month, setMonth] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ productId: "", flavorId: "", quantityChange: 0, movementType: "RESTOCK", notes: "" });
   const [saving, setSaving] = useState(false);
@@ -66,7 +65,8 @@ export default function InventoryPage() {
     fetch("/api/inventory").then((r) => r.json()).then(setInventory).catch(() => {});
     fetch("/api/settings/products").then((r) => r.json()).then(setProducts).catch(() => {});
     const { from, to } = monthBounds(year, month);
-    fetch(`/api/inventory/movements?from=${from}&to=${to}`).then((r) => r.json()).then(setMovements).catch(() => {});
+    const q = from ? `?from=${from}&to=${to}` : "";
+    fetch(`/api/inventory/movements${q}`).then((r) => r.json()).then(setMovements).catch(() => {});
   }, [year, month]);
 
   useEffect(() => { fetchInventory(); }, [fetchInventory]);
@@ -244,7 +244,9 @@ export default function InventoryPage() {
         {/* Movements log for selected month */}
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-gray-700">
-            Movements — {new Date(year, month - 1).toLocaleString("default", { month: "long" })} {year}
+            {year && month
+              ? `Movements — ${new Date(year, month - 1).toLocaleString("default", { month: "long" })} ${year}`
+              : "All Movements"}
           </h3>
           {movements.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-200 p-6 text-center text-gray-400 text-sm">

@@ -52,8 +52,8 @@ export default function RndPage() {
   const [projects, setProjects] = useState<RndProject[]>([]);
   const [directExpenses, setDirectExpenses] = useState<DirectExpense[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState<number | null>(null);
+  const [month, setMonth] = useState<number | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showNewProject, setShowNewProject] = useState(false);
   const [showExpense, setShowExpense] = useState<string | null>(null);
@@ -73,8 +73,10 @@ export default function RndPage() {
 
   const fetchProjects = useCallback(() => {
     const { from, to } = monthBounds(year, month);
-    fetch(`/api/rnd?from=${from}&to=${to}`).then((r) => r.json()).then(setProjects).catch(() => {});
-    fetch(`/api/transactions?category=RND&referenceIdNull=1&from=${from}&to=${to}&limit=200`).then((r) => r.json()).then((d) => setDirectExpenses(d.items ?? [])).catch(() => {});
+    const dateQ = from ? `?from=${from}&to=${to}` : "";
+    const txDateQ = from ? `&from=${from}&to=${to}` : "";
+    fetch(`/api/rnd${dateQ}`).then((r) => r.json()).then(setProjects).catch(() => {});
+    fetch(`/api/transactions?category=RND&referenceIdNull=1${txDateQ}&limit=200`).then((r) => r.json()).then((d) => setDirectExpenses(d.items ?? [])).catch(() => {});
   }, [year, month]);
 
   useEffect(() => {

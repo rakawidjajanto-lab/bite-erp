@@ -39,8 +39,8 @@ const CATEGORY_COLORS: Record<string, string> = {
 export default function AssetsPage() {
   const now = new Date();
   const [assets, setAssets] = useState<PhysicalAsset[]>([]);
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState<number | null>(null);
+  const [month, setMonth] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -58,7 +58,8 @@ export default function AssetsPage() {
 
   const fetchAssets = useCallback(() => {
     const { from, to } = monthBounds(year, month);
-    fetch(`/api/assets?from=${from}&to=${to}`).then((r) => r.json()).then(setAssets).catch(() => {});
+    const q = from ? `?from=${from}&to=${to}` : "";
+    fetch(`/api/assets${q}`).then((r) => r.json()).then(setAssets).catch(() => {});
   }, [year, month]);
 
   useEffect(() => { fetchAssets(); }, [fetchAssets]);

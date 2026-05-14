@@ -33,8 +33,8 @@ export default function MarketingPage() {
   const [giveaways, setGiveaways] = useState<Giveaway[]>([]);
   const [directExpenses, setDirectExpenses] = useState<DirectExpense[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState<number | null>(null);
+  const [month, setMonth] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -51,8 +51,10 @@ export default function MarketingPage() {
 
   const fetchData = useCallback(() => {
     const { from, to } = monthBounds(year, month);
-    fetch(`/api/marketing/giveaways?from=${from}&to=${to}`).then((r) => r.json()).then(setGiveaways).catch(() => {});
-    fetch(`/api/transactions?category=MARKETING&referenceIdNull=1&from=${from}&to=${to}&limit=200`).then((r) => r.json()).then((d) => setDirectExpenses(d.items ?? [])).catch(() => {});
+    const dateQ = from ? `?from=${from}&to=${to}` : "";
+    const txDateQ = from ? `&from=${from}&to=${to}` : "";
+    fetch(`/api/marketing/giveaways${dateQ}`).then((r) => r.json()).then(setGiveaways).catch(() => {});
+    fetch(`/api/transactions?category=MARKETING&referenceIdNull=1${txDateQ}&limit=200`).then((r) => r.json()).then((d) => setDirectExpenses(d.items ?? [])).catch(() => {});
     fetch("/api/settings/products").then((r) => r.json()).then(setProducts).catch(() => {});
   }, [year, month]);
 

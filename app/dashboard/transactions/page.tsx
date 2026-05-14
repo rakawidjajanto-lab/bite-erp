@@ -30,13 +30,12 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 export default function TransactionsPage() {
-  const now = new Date();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState<number | null>(null);
+  const [month, setMonth] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -52,8 +51,8 @@ export default function TransactionsPage() {
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (category) params.set("category", category);
-    params.set("from", from);
-    params.set("to", to);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
     params.set("limit", "200");
     const res = await fetch(`/api/transactions?${params}`);
     const data = await res.json();
