@@ -1,182 +1,262 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Topbar } from "@/components/layout/Topbar";
-import { Plus, Palette } from "lucide-react";
+import { Plus, X, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 
-type Flavor = { id: string; name: string; colorHex: string | null; product: { name: string } };
-type Product = { id: string; name: string; sku: string };
+type Ingredient = {
+  id: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  pricePerUnit: number;
+};
+
+type Variant = {
+  id: string;
+  size: string;
+  sellingPrice: number;
+  isActive: boolean;
+  product: { id: string; name: string };
+  flavor: { id: string; name: string } | null;
+  ingredients: Ingredient[];
+};
+
 type Venue = { id: string; name: string; location: string | null };
 
-const PRESET_COLORS = [
-  "#f87171", "#fb923c", "#fbbf24", "#a3e635",
-  "#34d399", "#22d3ee", "#818cf8", "#e879f9",
-  "#f472b6", "#94a3b8",
-];
+const fmt = (n: number) =>
+  new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
+
+function cogs(v: Variant): number {
+  return v.ingredients.reduce((s, ing) => s + Number(ing.quantity) * Number(ing.pricePerUnit), 0);
+}
+
+function margin(v: Variant): number {
+  const sp = Number(v.sellingPrice);
+  if (!sp) return 0;
+  return ((sp - cogs(v)) / sp) * 100;
+}
 
 export default function SettingsPage() {
-  const [flavors, setFlavors] = useState<Flavor[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [variants, setVariants] = useState<Variant[]>([]);
   const [venues, setVenues] = useState<Venue[]>([]);
-  const [tab, setTab] = useState<"flavors" | "products" | "venues">("flavors");
+  const [tab, setTab] = useState<"products" | "venues">("products");
 
-  const TAB_LABELS: Record<"flavors" | "products" | "venues", string> = {
-    flavors: "Flavors",
-    products: "Products",
-    venues: "Add Venue",
-  };
+  // Add-variant modal
+  const [showAdd, setShowAdd] = useState(false);
+  const [newVariant, setNewVariant] = useState({ productName: "", flavorName: "", size: "", sellingPrice: "" });
+  const [saving, setSaving] = useState(false);
 
-  const [newFlavor, setNewFlavor] = useState({ name: "", productId: "", colorHex: "#818cf8" });
-  const [newProduct, setNewProduct] = useState({ name: "", sku: "", unitCost: 0, sellingPrice: 0 });
+  // Detail modal
+  const [selected, setSelected] = useState<Variant | null>(null);
+  const [editPrice, setEditPrice] = useState("");
+  const [newIng, setNewIng] = useState({ name: "", quantity: "", unit: "", pricePerUnit: "" });
+  const [editingIng, setEditingIng] = useState<string | null>(null);
+  const [ingEdit, setIngEdit] = useState<Partial<Ingredient>>({});
+  const [expandedIngredients, setExpandedIngredients] = useState(false);
+
+  // Venues
   const [newVenue, setNewVenue] = useState({ name: "", location: "", contactName: "", contactPhone: "" });
 
-  const fetchAll = () => {
-    fetch("/api/settings/flavors").then((r) => r.json()).then(setFlavors).catch(() => {});
-    fetch("/api/settings/products").then((r) => r.json()).then(setProducts).catch(() => {});
+  const fetchVariants = useCallback(() => {
+    fetch("/api/settings/variants").then((r) => r.json()).then(setVariants).catch(() => {});
+  }, []);
+
+  const fetchVenues = useCallback(() => {
     fetch("/api/settings/venues").then((r) => r.json()).then(setVenues).catch(() => {});
-  };
+  }, []);
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => {
+    fetchVariants();
+    fetchVenues();
+  }, [fetchVariants, fetchVenues]);
 
-  async function saveFlavor(e: React.FormEvent) {
+  // Unique product names from variants (+ any that exist in DB) for datalist
+  const productNames = [...new Set(variants.map((v) => v.product.name))].sort();
+  const flavorNames = (productName: string) =>
+    [...new Set(
+      variants
+        .filter((v) => v.product.name.toLowerCase() === productName.toLowerCase() && v.flavor)
+        .map((v) => v.flavor!.name)
+    )].sort();
+
+  async function addVariant(e: React.FormEvent) {
     e.preventDefault();
-    await fetch("/api/settings/flavors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newFlavor) });
-    setNewFlavor({ name: "", productId: "", colorHex: "#818cf8" });
-    fetchAll();
+    setSaving(true);
+    const res = await fetch("/api/settings/variants", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        productName: newVariant.productName.trim(),
+        flavorName: newVariant.flavorName.trim() || undefined,
+        size: newVariant.size.trim(),
+        sellingPrice: parseFloat(newVariant.sellingPrice) || 0,
+      }),
+    });
+    setSaving(false);
+    if (res.ok) {
+      setNewVariant({ productName: "", flavorName: "", size: "", sellingPrice: "" });
+      setShowAdd(false);
+      fetchVariants();
+    }
   }
 
-  async function saveProduct(e: React.FormEvent) {
+  async function updatePrice() {
+    if (!selected) return;
+    await fetch(`/api/settings/variants/${selected.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sellingPrice: parseFloat(editPrice) }),
+    });
+    fetchVariants();
+    setSelected((prev) => prev ? { ...prev, sellingPrice: parseFloat(editPrice) } : prev);
+  }
+
+  async function toggleActive() {
+    if (!selected) return;
+    await fetch(`/api/settings/variants/${selected.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isActive: !selected.isActive }),
+    });
+    fetchVariants();
+    setSelected((prev) => prev ? { ...prev, isActive: !prev.isActive } : prev);
+  }
+
+  async function addIngredient(e: React.FormEvent) {
     e.preventDefault();
-    await fetch("/api/settings/products", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newProduct) });
-    setNewProduct({ name: "", sku: "", unitCost: 0, sellingPrice: 0 });
-    fetchAll();
+    if (!selected) return;
+    const res = await fetch(`/api/settings/variants/${selected.id}/ingredients`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: newIng.name.trim(),
+        quantity: parseFloat(newIng.quantity),
+        unit: newIng.unit.trim(),
+        pricePerUnit: parseFloat(newIng.pricePerUnit),
+      }),
+    });
+    if (res.ok) {
+      const ing: Ingredient = await res.json();
+      setSelected((prev) => prev ? { ...prev, ingredients: [...prev.ingredients, ing] } : prev);
+      setNewIng({ name: "", quantity: "", unit: "", pricePerUnit: "" });
+      fetchVariants();
+    }
+  }
+
+  async function saveIngEdit(ingId: string) {
+    if (!selected) return;
+    await fetch(`/api/settings/variants/${selected.id}/ingredients/${ingId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(ingEdit),
+    });
+    setSelected((prev) => {
+      if (!prev) return prev;
+      return { ...prev, ingredients: prev.ingredients.map((i) => i.id === ingId ? { ...i, ...ingEdit } : i) };
+    });
+    setEditingIng(null);
+    setIngEdit({});
+    fetchVariants();
+  }
+
+  async function deleteIngredient(ingId: string) {
+    if (!selected) return;
+    await fetch(`/api/settings/variants/${selected.id}/ingredients/${ingId}`, { method: "DELETE" });
+    setSelected((prev) => prev ? { ...prev, ingredients: prev.ingredients.filter((i) => i.id !== ingId) } : prev);
+    fetchVariants();
   }
 
   async function saveVenue(e: React.FormEvent) {
     e.preventDefault();
-    await fetch("/api/settings/venues", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newVenue) });
+    await fetch("/api/settings/venues", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newVenue),
+    });
     setNewVenue({ name: "", location: "", contactName: "", contactPhone: "" });
-    fetchAll();
+    fetchVenues();
   }
+
+  // Group variants by product, then by flavor
+  const grouped = variants.reduce<Record<string, { byFlavor: Record<string, Variant[]>; noFlavor: Variant[] }>>(
+    (acc, v) => {
+      const pName = v.product.name;
+      if (!acc[pName]) acc[pName] = { byFlavor: {}, noFlavor: [] };
+      if (v.flavor) {
+        const fName = v.flavor.name;
+        if (!acc[pName].byFlavor[fName]) acc[pName].byFlavor[fName] = [];
+        acc[pName].byFlavor[fName].push(v);
+      } else {
+        acc[pName].noFlavor.push(v);
+      }
+      return acc;
+    },
+    {}
+  );
+
+  const selectedCogs = selected ? cogs(selected) : 0;
+  const selectedMargin = selected ? margin(selected) : 0;
 
   return (
     <>
       <Topbar title="Settings" />
-      <div className="flex-1 overflow-auto p-4 sm:p-6 max-w-2xl space-y-5 sm:space-y-6">
+      <div className="flex-1 overflow-auto p-4 sm:p-6 max-w-3xl space-y-5">
+
+        {/* Tabs */}
         <div className="flex gap-2 border-b border-gray-200">
-          {(["flavors", "products", "venues"] as const).map((t) => (
+          {(["products", "venues"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition ${tab === t ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition capitalize ${tab === t ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
             >
-              {TAB_LABELS[t]}
+              {t === "products" ? "Products" : "Venues"}
             </button>
           ))}
         </div>
 
-        {tab === "flavors" && (
-          <div className="space-y-4">
-            <form onSubmit={saveFlavor} className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-              <h3 className="font-semibold text-gray-800 text-sm">Add Flavor</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Flavor Name</label>
-                  <input
-                    required
-                    value={newFlavor.name}
-                    onChange={(e) => setNewFlavor((p) => ({ ...p, name: e.target.value }))}
-                    placeholder="e.g. Matcha, Vanilla..."
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Product</label>
-                  <select
-                    value={newFlavor.productId}
-                    onChange={(e) => setNewFlavor((p) => ({ ...p, productId: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Select product...</option>
-                    {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-2 block flex items-center gap-1">
-                  <Palette size={12} />
-                  Color
-                </label>
-                <div className="flex gap-2 flex-wrap">
-                  {PRESET_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setNewFlavor((p) => ({ ...p, colorHex: c }))}
-                      className={`w-7 h-7 rounded-full transition ${newFlavor.colorHex === c ? "ring-2 ring-offset-2 ring-blue-500 scale-110" : ""}`}
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
-                </div>
-              </div>
-              <button type="submit" className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition">
-                <Plus size={14} /> Add Flavor
-              </button>
-            </form>
-
-            <div className="space-y-2">
-              {flavors.map((f) => (
-                <div key={f.id} className="bg-white rounded-xl border border-gray-200 px-4 py-3 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {f.colorHex && <span className="w-4 h-4 rounded-full" style={{ backgroundColor: f.colorHex }} />}
-                    <div>
-                      <p className="font-medium text-gray-900 text-sm">{f.name}</p>
-                      <p className="text-xs text-gray-400">{f.product?.name ?? "No product"}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
+        {/* Products tab */}
         {tab === "products" && (
-          <div className="space-y-4">
-            <form onSubmit={saveProduct} className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-              <h3 className="font-semibold text-gray-800 text-sm">Add Product</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Product Name</label>
-                  <input required value={newProduct.name} onChange={(e) => setNewProduct((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. Protein Gelato" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">SKU</label>
-                  <input required value={newProduct.sku} onChange={(e) => setNewProduct((p) => ({ ...p, sku: e.target.value }))} placeholder="e.g. PG-001" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Unit Cost (IDR)</label>
-                  <input type="number" inputMode="numeric" value={newProduct.unitCost} onChange={(e) => setNewProduct((p) => ({ ...p, unitCost: parseFloat(e.target.value) || 0 }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Selling Price (IDR)</label>
-                  <input type="number" inputMode="numeric" value={newProduct.sellingPrice} onChange={(e) => setNewProduct((p) => ({ ...p, sellingPrice: parseFloat(e.target.value) || 0 }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-              </div>
-              <button type="submit" className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition">
-                <Plus size={14} /> Add Product
+          <div className="space-y-5">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-gray-800">Product Variants</h2>
+              <button
+                onClick={() => setShowAdd(true)}
+                className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition"
+              >
+                <Plus size={14} /> Add Variant
               </button>
-            </form>
-            <div className="space-y-2">
-              {products.map((p) => (
-                <div key={p.id} className="bg-white rounded-xl border border-gray-200 px-4 py-3">
-                  <p className="font-medium text-gray-900 text-sm">{p.name}</p>
-                  <p className="text-xs text-gray-400">SKU: {p.sku}</p>
-                </div>
-              ))}
             </div>
+
+            {Object.keys(grouped).length === 0 && (
+              <p className="text-sm text-gray-400 text-center py-8">No variants yet. Click "Add Variant" to get started.</p>
+            )}
+
+            {Object.entries(grouped).map(([productName, { byFlavor, noFlavor }]) => (
+              <div key={productName} className="space-y-3">
+                <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">{productName}</h3>
+
+                {/* Unflavored variants */}
+                {noFlavor.map((v) => (
+                  <VariantCard key={v.id} variant={v} onClick={() => { setSelected(v); setEditPrice(String(v.sellingPrice)); setExpandedIngredients(false); }} />
+                ))}
+
+                {/* Flavored groups */}
+                {Object.entries(byFlavor).map(([flavorName, flavorVariants]) => (
+                  <div key={flavorName} className="pl-3 border-l-2 border-gray-200 space-y-2">
+                    <p className="text-xs font-medium text-gray-500">{flavorName}</p>
+                    {flavorVariants.map((v) => (
+                      <VariantCard key={v.id} variant={v} onClick={() => { setSelected(v); setEditPrice(String(v.sellingPrice)); setExpandedIngredients(false); }} />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ))}
           </div>
         )}
 
+        {/* Venues tab */}
         {tab === "venues" && (
           <div className="space-y-4">
             <form onSubmit={saveVenue} className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
@@ -214,6 +294,319 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
+
+      {/* Add Variant modal */}
+      {showAdd && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-gray-800">Add Variant</h2>
+              <button onClick={() => setShowAdd(false)}><X size={18} /></button>
+            </div>
+            <form onSubmit={addVariant} className="space-y-3">
+              <datalist id="dl-products">
+                {productNames.map((n) => <option key={n} value={n} />)}
+              </datalist>
+              <datalist id="dl-flavors">
+                {flavorNames(newVariant.productName).map((n) => <option key={n} value={n} />)}
+              </datalist>
+
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Product Name</label>
+                <input
+                  required
+                  list="dl-products"
+                  value={newVariant.productName}
+                  onChange={(e) => setNewVariant((p) => ({ ...p, productName: e.target.value }))}
+                  placeholder="e.g. Gelato"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Flavor Name (optional)</label>
+                <input
+                  list="dl-flavors"
+                  value={newVariant.flavorName}
+                  onChange={(e) => setNewVariant((p) => ({ ...p, flavorName: e.target.value }))}
+                  placeholder="e.g. Vanilla"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Size</label>
+                <input
+                  required
+                  value={newVariant.size}
+                  onChange={(e) => setNewVariant((p) => ({ ...p, size: e.target.value }))}
+                  placeholder="e.g. Cup 150ml"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Selling Price (IDR)</label>
+                <input
+                  required
+                  type="number"
+                  inputMode="numeric"
+                  min="0"
+                  value={newVariant.sellingPrice}
+                  onChange={(e) => setNewVariant((p) => ({ ...p, sellingPrice: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => setShowAdd(false)} className="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition">Cancel</button>
+                <button type="submit" disabled={saving} className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-60">
+                  {saving ? "Saving…" : "Add Variant"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Variant detail modal */}
+      {selected && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 space-y-5">
+              {/* Header */}
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs text-gray-400 uppercase tracking-wide">{selected.product.name}</p>
+                  <h2 className="font-semibold text-gray-900 text-lg">
+                    {selected.flavor ? `${selected.flavor.name} – ` : ""}{selected.size}
+                  </h2>
+                  {!selected.isActive && (
+                    <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Inactive</span>
+                  )}
+                </div>
+                <button onClick={() => setSelected(null)}><X size={18} /></button>
+              </div>
+
+              {/* Selling price (editable) */}
+              <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+                <label className="text-xs text-gray-500">Selling Price (IDR)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={editPrice}
+                    onChange={(e) => setEditPrice(e.target.value)}
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    onClick={updatePrice}
+                    className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+
+              {/* COGS summary */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-white border border-gray-200 rounded-xl p-3 text-center">
+                  <p className="text-xs text-gray-400">Total COGS</p>
+                  <p className="font-semibold text-gray-800 text-sm">{fmt(selectedCogs)}</p>
+                </div>
+                <div className="bg-white border border-gray-200 rounded-xl p-3 text-center">
+                  <p className="text-xs text-gray-400">Selling Price</p>
+                  <p className="font-semibold text-gray-800 text-sm">{fmt(Number(selected.sellingPrice))}</p>
+                </div>
+                <div className={`rounded-xl p-3 text-center ${selectedMargin >= 0 ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"}`}>
+                  <p className="text-xs text-gray-400">Gross Margin</p>
+                  <p className={`font-semibold text-sm ${selectedMargin >= 0 ? "text-green-700" : "text-red-700"}`}>{selectedMargin.toFixed(1)}%</p>
+                </div>
+              </div>
+
+              {/* Ingredients */}
+              <div className="space-y-2">
+                <button
+                  onClick={() => setExpandedIngredients((p) => !p)}
+                  className="flex items-center gap-2 text-sm font-semibold text-gray-700 w-full"
+                >
+                  Ingredients / COGS Breakdown
+                  {expandedIngredients ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  <span className="text-xs text-gray-400 font-normal ml-auto">{selected.ingredients.length} items</span>
+                </button>
+
+                {(expandedIngredients || selected.ingredients.length === 0) && (
+                  <div className="border border-gray-200 rounded-xl overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-medium text-gray-500">Ingredient</th>
+                          <th className="px-3 py-2 text-right font-medium text-gray-500">Qty</th>
+                          <th className="px-3 py-2 text-left font-medium text-gray-500">Unit</th>
+                          <th className="px-3 py-2 text-right font-medium text-gray-500">Price/Unit</th>
+                          <th className="px-3 py-2 text-right font-medium text-gray-500">Total</th>
+                          <th className="px-3 py-2" />
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {selected.ingredients.map((ing) => (
+                          editingIng === ing.id ? (
+                            <tr key={ing.id} className="bg-blue-50">
+                              <td className="px-2 py-1">
+                                <input
+                                  value={ingEdit.name ?? ing.name}
+                                  onChange={(e) => setIngEdit((p) => ({ ...p, name: e.target.value }))}
+                                  className="w-full border border-blue-300 rounded px-2 py-1 text-xs"
+                                />
+                              </td>
+                              <td className="px-2 py-1">
+                                <input
+                                  type="number"
+                                  value={ingEdit.quantity ?? ing.quantity}
+                                  onChange={(e) => setIngEdit((p) => ({ ...p, quantity: parseFloat(e.target.value) }))}
+                                  className="w-16 border border-blue-300 rounded px-2 py-1 text-xs text-right"
+                                />
+                              </td>
+                              <td className="px-2 py-1">
+                                <input
+                                  value={ingEdit.unit ?? ing.unit}
+                                  onChange={(e) => setIngEdit((p) => ({ ...p, unit: e.target.value }))}
+                                  className="w-16 border border-blue-300 rounded px-2 py-1 text-xs"
+                                />
+                              </td>
+                              <td className="px-2 py-1">
+                                <input
+                                  type="number"
+                                  value={ingEdit.pricePerUnit ?? ing.pricePerUnit}
+                                  onChange={(e) => setIngEdit((p) => ({ ...p, pricePerUnit: parseFloat(e.target.value) }))}
+                                  className="w-24 border border-blue-300 rounded px-2 py-1 text-xs text-right"
+                                />
+                              </td>
+                              <td className="px-3 py-2 text-right text-gray-500">
+                                {fmt(Number(ingEdit.quantity ?? ing.quantity) * Number(ingEdit.pricePerUnit ?? ing.pricePerUnit))}
+                              </td>
+                              <td className="px-2 py-1">
+                                <div className="flex gap-1">
+                                  <button onClick={() => saveIngEdit(ing.id)} className="text-xs text-blue-600 font-medium hover:underline">Save</button>
+                                  <button onClick={() => { setEditingIng(null); setIngEdit({}); }} className="text-xs text-gray-400 hover:underline">✕</button>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : (
+                            <tr
+                              key={ing.id}
+                              className="hover:bg-gray-50 cursor-pointer"
+                              onClick={() => { setEditingIng(ing.id); setIngEdit({}); }}
+                            >
+                              <td className="px-3 py-2 text-gray-800">{ing.name}</td>
+                              <td className="px-3 py-2 text-right text-gray-600">{Number(ing.quantity)}</td>
+                              <td className="px-3 py-2 text-gray-600">{ing.unit}</td>
+                              <td className="px-3 py-2 text-right text-gray-600">{fmt(Number(ing.pricePerUnit))}</td>
+                              <td className="px-3 py-2 text-right font-medium text-gray-800">{fmt(Number(ing.quantity) * Number(ing.pricePerUnit))}</td>
+                              <td className="px-3 py-2">
+                                <button onClick={(e) => { e.stopPropagation(); deleteIngredient(ing.id); }} className="text-red-400 hover:text-red-600">
+                                  <Trash2 size={13} />
+                                </button>
+                              </td>
+                            </tr>
+                          )
+                        ))}
+
+                        {/* Add ingredient row */}
+                        <tr className="bg-gray-50">
+                          <td className="px-2 py-1">
+                            <input
+                              value={newIng.name}
+                              onChange={(e) => setNewIng((p) => ({ ...p, name: e.target.value }))}
+                              placeholder="Ingredient"
+                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </td>
+                          <td className="px-2 py-1">
+                            <input
+                              type="number"
+                              value={newIng.quantity}
+                              onChange={(e) => setNewIng((p) => ({ ...p, quantity: e.target.value }))}
+                              placeholder="Qty"
+                              className="w-16 border border-gray-300 rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </td>
+                          <td className="px-2 py-1">
+                            <input
+                              value={newIng.unit}
+                              onChange={(e) => setNewIng((p) => ({ ...p, unit: e.target.value }))}
+                              placeholder="ml"
+                              className="w-16 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </td>
+                          <td className="px-2 py-1">
+                            <input
+                              type="number"
+                              value={newIng.pricePerUnit}
+                              onChange={(e) => setNewIng((p) => ({ ...p, pricePerUnit: e.target.value }))}
+                              placeholder="Price/unit"
+                              className="w-24 border border-gray-300 rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </td>
+                          <td />
+                          <td className="px-2 py-1">
+                            <button
+                              onClick={(e) => { e.preventDefault(); addIngredient(e as unknown as React.FormEvent); }}
+                              className="text-blue-600 hover:text-blue-800"
+                            >
+                              <Plus size={15} />
+                            </button>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Deactivate toggle */}
+              <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                <span className="text-sm text-gray-600">{selected.isActive ? "Active" : "Inactive"}</span>
+                <button
+                  onClick={toggleActive}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${selected.isActive ? "bg-red-50 text-red-600 hover:bg-red-100" : "bg-green-50 text-green-600 hover:bg-green-100"}`}
+                >
+                  {selected.isActive ? "Deactivate" : "Reactivate"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
+  );
+}
+
+function VariantCard({ variant, onClick }: { variant: Variant; onClick: () => void }) {
+  const totalCogs = cogs(variant);
+  const grossMargin = margin(variant);
+  const fmt = (n: number) =>
+    new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
+
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left bg-white rounded-xl border border-gray-200 px-4 py-3 hover:border-blue-300 hover:shadow-sm transition flex items-center justify-between gap-4"
+    >
+      <div>
+        <p className="font-medium text-gray-900 text-sm">{variant.size}</p>
+        {!variant.isActive && <span className="text-xs text-gray-400">(inactive)</span>}
+      </div>
+      <div className="flex items-center gap-4 text-xs text-gray-500 shrink-0">
+        <div className="text-right">
+          <p className="text-gray-400">Price</p>
+          <p className="font-medium text-gray-700">{fmt(Number(variant.sellingPrice))}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-gray-400">COGS</p>
+          <p className="font-medium text-gray-700">{totalCogs > 0 ? fmt(totalCogs) : "—"}</p>
+        </div>
+        <div className={`text-right ${grossMargin >= 0 ? "text-green-600" : "text-red-600"}`}>
+          <p className="text-gray-400">Margin</p>
+          <p className="font-medium">{totalCogs > 0 ? `${grossMargin.toFixed(1)}%` : "—"}</p>
+        </div>
+      </div>
+    </button>
   );
 }
