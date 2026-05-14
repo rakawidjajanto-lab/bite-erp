@@ -109,7 +109,7 @@ export default function TransactionsPage() {
   return (
     <>
       <Topbar title="Transactions" />
-      <div className="flex-1 overflow-auto p-4 sm:p-6">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
           <div>
@@ -208,8 +208,11 @@ export default function TransactionsPage() {
           </div>
         ) : (
           /* Scrollable table — always visible on all screen sizes */
-          <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
-            <table className="text-sm min-w-[780px] w-full">
+          <div
+            className="bg-white rounded-xl border border-gray-200 overflow-x-auto"
+            style={{ WebkitOverflowScrolling: "touch" }}
+          >
+            <table className="text-sm min-w-[900px] w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   {bulkMode && (
