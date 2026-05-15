@@ -16,6 +16,7 @@ import {
   Settings,
   X,
   LogOut,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -25,6 +26,7 @@ const nav = [
   { label: "Transactions", href: "/dashboard/transactions", icon: ArrowLeftRight },
   { label: "Orders", href: "/dashboard/orders", icon: ShoppingCart },
   { label: "Finance", href: "/dashboard/finance", icon: TrendingUp },
+  { label: "Investors", href: "/dashboard/investors", icon: Users },
   { label: "Platforms", href: "/dashboard/platforms", icon: ShoppingBag },
   { label: "Venue", href: "/dashboard/venue", icon: MapPin },
   { label: "Inventory", href: "/dashboard/inventory", icon: Package },
