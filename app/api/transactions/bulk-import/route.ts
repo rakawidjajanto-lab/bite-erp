@@ -218,20 +218,22 @@ export async function POST(req: Request) {
   }
 
   const dbCounts = new Map<string, number>();
-  for (const [key] of batchCounts) {
-    const [date, description, category, amountInStr, amountOutStr, subCategory] = key.split("|");
-    const count = await prisma.transaction.count({
-      where: {
-        date: date ? new Date(date) : undefined,
-        description,
-        category: category as never,
-        amountIn: amountInStr !== "" ? parseFloat(amountInStr) : null,
-        amountOut: amountOutStr !== "" ? parseFloat(amountOutStr) : null,
-        subCategory: subCategory !== "" ? subCategory : null,
-      },
-    });
-    dbCounts.set(key, count);
-  }
+  await Promise.all(
+    [...batchCounts.keys()].map(async (key) => {
+      const [date, description, category, amountInStr, amountOutStr, subCategory] = key.split("|");
+      const count = await prisma.transaction.count({
+        where: {
+          date: date ? new Date(date) : undefined,
+          description,
+          category: category as never,
+          amountIn: amountInStr !== "" ? parseFloat(amountInStr) : null,
+          amountOut: amountOutStr !== "" ? parseFloat(amountOutStr) : null,
+          subCategory: subCategory !== "" ? subCategory : null,
+        },
+      });
+      dbCounts.set(key, count);
+    })
+  );
 
   const allowedNew = new Map<string, number>();
   for (const [key, bCount] of batchCounts) {
@@ -243,6 +245,15 @@ export async function POST(req: Request) {
   let imported = 0;
   let skipped = 0;
   const errors: string[] = [];
+  const toCreate: {
+    date: Date;
+    description: string;
+    category: string;
+    amountIn: number | null;
+    amountOut: number | null;
+    subCategory: string | null;
+    source: string;
+  }[] = [];
 
   let rowIndex = 0;
   for (const row of rows) {
@@ -300,24 +311,25 @@ export async function POST(req: Request) {
         continue;
       }
 
-      const category = (row.category as never) ?? "OTHER_INCOME";
-      await prisma.transaction.create({
-        data: {
-          date: row.date ? new Date(row.date) : new Date(),
-          description: row.description || "Imported transaction",
-          category,
-          amountIn: row.amountIn ?? null,
-          amountOut: row.amountOut ?? null,
-          subCategory: row.subCategory || null,
-          source: "EXCEL_IMPORT",
-        },
+      toCreate.push({
+        date: row.date ? new Date(row.date) : new Date(),
+        description: row.description || "Imported transaction",
+        category: (row.category as string) ?? "OTHER_INCOME",
+        amountIn: row.amountIn ?? null,
+        amountOut: row.amountOut ?? null,
+        subCategory: row.subCategory || null,
+        source: "EXCEL_IMPORT",
       });
       importedInBatch.set(key, alreadyImported + 1);
-      imported++;
     } catch (err) {
       errors.push(`Row "${row.description}": ${String(err)}`);
     }
   }
+
+  if (toCreate.length > 0) {
+    await prisma.transaction.createMany({ data: toCreate as never });
+  }
+  imported += toCreate.length;
 
   return NextResponse.json({ imported, skipped, failed: errors.length, errors: errors.slice(0, 10) });
 }

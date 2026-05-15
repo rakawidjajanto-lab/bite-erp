@@ -39,6 +39,8 @@ export default function TransactionsPage() {
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
   // Selection state
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkMode, setBulkMode] = useState(false);
@@ -257,8 +259,32 @@ export default function TransactionsPage() {
                     <td className="py-3 px-4 text-gray-500 whitespace-nowrap">
                       {new Date(tx.date).toLocaleDateString("id-ID")}
                     </td>
-                    <td className="py-3 px-4 text-gray-900">
-                      <span className="block max-w-[260px] truncate">{tx.description}</span>
+                    <td className="py-3 px-4 text-gray-900 max-w-[260px]">
+                      {tx.description.length > 30 ? (
+                        expanded.has(tx.id) ? (
+                          <span>
+                            {tx.description}{" "}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setExpanded((p) => { const n = new Set(p); n.delete(tx.id); return n; }); }}
+                              className="text-blue-500 hover:underline text-xs"
+                            >
+                              less
+                            </button>
+                          </span>
+                        ) : (
+                          <span>
+                            {tx.description.slice(0, 30)}&hellip;{" "}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setExpanded((p) => new Set([...p, tx.id])); }}
+                              className="text-blue-500 hover:underline text-xs"
+                            >
+                              more
+                            </button>
+                          </span>
+                        )
+                      ) : (
+                        tx.description
+                      )}
                     </td>
                     <td className="py-3 px-4 whitespace-nowrap">
                       <span
