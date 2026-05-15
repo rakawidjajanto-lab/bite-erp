@@ -231,12 +231,14 @@ export async function POST(req: Request) {
       }
 
       // Default: regular transaction with duplicate check
+      const category = (row.category as never) ?? "OTHER_INCOME";
       const existing = await prisma.transaction.findFirst({
         where: {
-          description: row.description,
           date: row.date ? new Date(row.date) : undefined,
-          amountIn: row.amountIn ?? undefined,
-          amountOut: row.amountOut ?? undefined,
+          description: row.description,
+          category,
+          amountIn: row.amountIn,
+          amountOut: row.amountOut,
         },
       });
       if (existing) { skipped++; continue; }
@@ -245,7 +247,7 @@ export async function POST(req: Request) {
         data: {
           date: row.date ? new Date(row.date) : new Date(),
           description: row.description || "Imported transaction",
-          category: (row.category as never) ?? "OTHER_INCOME",
+          category,
           amountIn: row.amountIn ?? null,
           amountOut: row.amountOut ?? null,
           source: "EXCEL_IMPORT",
