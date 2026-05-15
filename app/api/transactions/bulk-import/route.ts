@@ -188,6 +188,14 @@ async function handleMarketing(row: ImportRow): Promise<boolean> {
   return true;
 }
 
+const SPECIAL_ROW_TYPES = new Set(["inventory", "supplies", "asset", "investment", "rnd", "r&d", "research", "marketing"]);
+
+function makeDedupeKey(row: ImportRow): string {
+  const cat = (row.category as string) || "OTHER_INCOME";
+  const sub = row.subCategory || "";
+  return [row.date ?? "", row.description, cat, row.amountIn ?? "", row.amountOut ?? "", sub].join("|");
+}
+
 export async function POST(req: Request) {
   const body = await req.json();
   const rows: ImportRow[] = body.rows ?? [];
@@ -196,19 +204,66 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No rows provided" }, { status: 400 });
   }
 
+  // Pre-compute dedup budget for regular transaction rows.
+  // For each unique signature, allowedNew = max(0, batchCount - dbCount).
+  // This lets N identical rows import on first run, and skip all N on re-import,
+  // without rows within the same batch blocking each other.
+  const batchCounts = new Map<string, number>();
+  for (const row of rows) {
+    if (!row.description && !row.amountIn && !row.amountOut) continue;
+    const type = (row.rowType ?? "transaction").toLowerCase();
+    if (SPECIAL_ROW_TYPES.has(type)) continue;
+    const k = makeDedupeKey(row);
+    batchCounts.set(k, (batchCounts.get(k) ?? 0) + 1);
+  }
+
+  const dbCounts = new Map<string, number>();
+  for (const [key] of batchCounts) {
+    const [date, description, category, amountInStr, amountOutStr, subCategory] = key.split("|");
+    const count = await prisma.transaction.count({
+      where: {
+        date: date ? new Date(date) : undefined,
+        description,
+        category: category as never,
+        amountIn: amountInStr !== "" ? parseFloat(amountInStr) : null,
+        amountOut: amountOutStr !== "" ? parseFloat(amountOutStr) : null,
+        subCategory: subCategory !== "" ? subCategory : null,
+      },
+    });
+    dbCounts.set(key, count);
+  }
+
+  const allowedNew = new Map<string, number>();
+  for (const [key, bCount] of batchCounts) {
+    allowedNew.set(key, Math.max(0, bCount - (dbCounts.get(key) ?? 0)));
+  }
+
+  const importedInBatch = new Map<string, number>();
+
   let imported = 0;
   let skipped = 0;
   const errors: string[] = [];
 
+  let rowIndex = 0;
   for (const row of rows) {
+    rowIndex++;
     try {
-      if (!row.description && !row.amountIn && !row.amountOut) { skipped++; continue; }
+      if (!row.description && !row.amountIn && !row.amountOut) {
+        console.log(`[SKIP] row ${rowIndex}: empty row`, { raw: row });
+        skipped++;
+        continue;
+      }
 
       const type = (row.rowType ?? "transaction").toLowerCase();
 
       if (type === "inventory" || type === "supplies") {
         const ok = await handleInventory(row);
-        ok ? imported++ : skipped++;
+        if (!ok) {
+          console.log(`[SKIP] row ${rowIndex} (inventory/supplies): product not found or missing productName`, { description: row.description, productName: row.productName, date: row.date });
+          skipped++;
+        } else {
+          imported++;
+        }
         continue;
       }
 
@@ -226,23 +281,26 @@ export async function POST(req: Request) {
 
       if (type === "marketing") {
         const ok = await handleMarketing(row);
-        ok ? imported++ : skipped++;
+        if (!ok) {
+          console.log(`[SKIP] row ${rowIndex} (marketing): product not found, missing productName, or missing recipient`, { description: row.description, productName: row.productName, recipient: row.recipient, date: row.date });
+          skipped++;
+        } else {
+          imported++;
+        }
         continue;
       }
 
-      // Default: regular transaction with duplicate check
-      const category = (row.category as never) ?? "OTHER_INCOME";
-      const existing = await prisma.transaction.findFirst({
-        where: {
-          date: row.date ? new Date(row.date) : undefined,
-          description: row.description,
-          category,
-          amountIn: row.amountIn,
-          amountOut: row.amountOut,
-        },
-      });
-      if (existing) { skipped++; continue; }
+      // Default: regular transaction — count-based dedup
+      const key = makeDedupeKey(row);
+      const alreadyImported = importedInBatch.get(key) ?? 0;
+      const allowed = allowedNew.get(key) ?? 0;
+      if (alreadyImported >= allowed) {
+        console.log(`[SKIP] row ${rowIndex}: already exists in DB`, { date: row.date, description: row.description, category: row.category, amountIn: row.amountIn, amountOut: row.amountOut, subCategory: row.subCategory, dbCount: dbCounts.get(key), batchCount: batchCounts.get(key) });
+        skipped++;
+        continue;
+      }
 
+      const category = (row.category as never) ?? "OTHER_INCOME";
       await prisma.transaction.create({
         data: {
           date: row.date ? new Date(row.date) : new Date(),
@@ -250,9 +308,11 @@ export async function POST(req: Request) {
           category,
           amountIn: row.amountIn ?? null,
           amountOut: row.amountOut ?? null,
+          subCategory: row.subCategory || null,
           source: "EXCEL_IMPORT",
         },
       });
+      importedInBatch.set(key, alreadyImported + 1);
       imported++;
     } catch (err) {
       errors.push(`Row "${row.description}": ${String(err)}`);

@@ -152,7 +152,7 @@ export function parseExcelFile(buffer: ArrayBuffer, fileName = "import.xlsx"): P
         purpose: String(row["purpose"] ?? row["Purpose"] ?? "other").trim().toUpperCase(),
         assetCategory: String(row["assetCategory"] ?? row["Asset Category"] ?? row["asset_category"] ?? "OTHER").trim().toUpperCase(),
         currentValue: parseFloat(String(row["currentValue"] ?? row["Current Value"] ?? row["current_value"] ?? "0").replace(/[^0-9.-]/g, "")) || 0,
-        subCategory: String(row["subCategory"] ?? row["Sub Category"] ?? row["sub_category"] ?? "other").trim().toLowerCase(),
+        subCategory: String(row["subCategory"] ?? row["Sub Category"] ?? row["sub_category"] ?? "").trim().toLowerCase(),
       };
     })
     .filter((r) => r.description || r.amountIn || r.amountOut);
