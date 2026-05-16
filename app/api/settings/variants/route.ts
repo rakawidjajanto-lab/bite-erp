@@ -14,8 +14,10 @@ export async function GET() {
   return NextResponse.json(variants);
 }
 
+type IngredientInput = { name: string; quantity: number; unit: string; pricePerUnit: number };
+
 export async function POST(req: Request) {
-  const { productName, flavorName, size, sellingPrice } = await req.json();
+  const { productName, flavorName, size, sellingPrice, ingredients } = await req.json();
 
   if (!productName?.trim() || !size?.trim() || !sellingPrice) {
     return NextResponse.json({ error: "productName, size and sellingPrice are required" }, { status: 400 });
@@ -52,12 +54,26 @@ export async function POST(req: Request) {
     flavorId = flavor.id;
   }
 
+  const validIngredients: IngredientInput[] = Array.isArray(ingredients)
+    ? ingredients.filter((i: IngredientInput) => i.name?.trim() && i.quantity > 0 && i.unit?.trim())
+    : [];
+
   const variant = await prisma.productVariant.create({
     data: {
       productId: product.id,
       flavorId,
       size: size.trim(),
       sellingPrice,
+      ingredients: validIngredients.length
+        ? {
+            create: validIngredients.map((i) => ({
+              name: i.name.trim(),
+              quantity: i.quantity,
+              unit: i.unit.trim(),
+              pricePerUnit: i.pricePerUnit ?? 0,
+            })),
+          }
+        : undefined,
     },
     include: {
       product: { select: { id: true, name: true } },
