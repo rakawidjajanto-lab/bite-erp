@@ -67,6 +67,10 @@ export default function SettingsPage() {
   const [expandedIngredients, setExpandedIngredients] = useState(false);
   const [priceHistory, setPriceHistory] = useState<PriceHistoryEntry[]>([]);
 
+  // Delete product
+  const [confirmDelete, setConfirmDelete] = useState<{ productId: string; productName: string } | null>(null);
+  const [deletingProduct, setDeletingProduct] = useState(false);
+
   // Venues
   const [newVenue, setNewVenue] = useState({ name: "", location: "", contactName: "", contactPhone: "" });
 
@@ -227,6 +231,15 @@ export default function SettingsPage() {
     fetchVariants();
   }
 
+  async function deleteProduct() {
+    if (!confirmDelete) return;
+    setDeletingProduct(true);
+    await fetch(`/api/settings/products/${confirmDelete.productId}`, { method: "DELETE" });
+    setDeletingProduct(false);
+    setConfirmDelete(null);
+    fetchVariants();
+  }
+
   async function saveVenue(e: React.FormEvent) {
     e.preventDefault();
     await fetch("/api/settings/venues", {
@@ -293,9 +306,22 @@ export default function SettingsPage() {
               <p className="text-sm text-gray-400 text-center py-8">No variants yet. Click "Add Variant" to get started.</p>
             )}
 
-            {Object.entries(grouped).map(([productName, { byFlavor, noFlavor }]) => (
+            {Object.entries(grouped).map(([productName, { byFlavor, noFlavor }]) => {
+              const productId = (noFlavor[0] ?? Object.values(byFlavor)[0]?.[0])?.product.id;
+              return (
               <div key={productName} className="space-y-3">
-                <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">{productName}</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">{productName}</h3>
+                  {productId && (
+                    <button
+                      onClick={() => setConfirmDelete({ productId, productName })}
+                      className="text-gray-300 hover:text-red-500 transition"
+                      title="Delete product"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
 
                 {/* Unflavored variants */}
                 {noFlavor.map((v) => (
@@ -312,7 +338,8 @@ export default function SettingsPage() {
                   </div>
                 ))}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -544,6 +571,40 @@ export default function SettingsPage() {
           </div>
         );
       })()}
+
+      {/* Delete product confirmation */}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="shrink-0 w-9 h-9 rounded-full bg-red-50 flex items-center justify-center">
+                <Trash2 size={16} className="text-red-500" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-gray-900">Delete product?</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  This will permanently delete <span className="font-medium text-gray-800">{confirmDelete.productName}</span> and all its variants and ingredients. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={deleteProduct}
+                disabled={deletingProduct}
+                className="flex-1 bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 transition disabled:opacity-60"
+              >
+                {deletingProduct ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Variant detail modal */}
       {selected && (
