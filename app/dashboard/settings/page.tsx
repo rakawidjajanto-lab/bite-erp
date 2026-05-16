@@ -138,7 +138,6 @@ export default function SettingsPage() {
     e.preventDefault();
     setSaving(true);
     const ingredients = newIngRows
-      .filter((r) => r.name.trim() && r.quantity && r.unit.trim())
       .map((r) => ({
         name: r.name.trim(),
         quantity: parseFloat(r.quantity) || 0,
@@ -501,6 +500,7 @@ export default function SettingsPage() {
                           value={row.quantity}
                           onChange={(e) => updateRow(idx, "quantity", e.target.value)}
                           onKeyDown={onIngKeyDown}
+                          onWheel={(e) => e.currentTarget.blur()}
                           placeholder="0"
                           className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
@@ -520,6 +520,7 @@ export default function SettingsPage() {
                           value={row.pricePerUnit}
                           onChange={(e) => updateRow(idx, "pricePerUnit", e.target.value)}
                           onKeyDown={onIngKeyDown}
+                          onWheel={(e) => e.currentTarget.blur()}
                           placeholder="0"
                           className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />

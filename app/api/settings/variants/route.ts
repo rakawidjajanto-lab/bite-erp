@@ -55,7 +55,7 @@ export async function POST(req: Request) {
   }
 
   const validIngredients: IngredientInput[] = Array.isArray(ingredients)
-    ? ingredients.filter((i: IngredientInput) => i.name?.trim() && i.quantity > 0 && i.unit?.trim())
+    ? ingredients.filter((i: IngredientInput) => i.name?.trim() || i.quantity > 0 || i.pricePerUnit > 0)
     : [];
 
   const variant = await prisma.productVariant.create({
