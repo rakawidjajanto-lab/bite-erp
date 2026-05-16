@@ -342,10 +342,17 @@ export default function SettingsPage() {
         const newIngMargin = sp > 0 ? ((sp - newIngTotalCogs) / sp) * 100 : null;
 
         function updateRow(idx: number, field: keyof IngredientRow, value: string) {
-          setNewIngRows((rows) => rows.map((r, i) => i === idx ? { ...r, [field]: value } : r));
+          const v = (field === "quantity" || field === "pricePerUnit") ? value.replace(",", ".") : value;
+          setNewIngRows((rows) => rows.map((r, i) => i === idx ? { ...r, [field]: v } : r));
         }
         function removeRow(idx: number) {
           setNewIngRows((rows) => rows.filter((_, i) => i !== idx));
+        }
+        function onIngKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            setNewIngRows((r) => [...r, { name: "", quantity: "", unit: "", pricePerUnit: "" }]);
+          }
         }
 
         return (
@@ -435,15 +442,18 @@ export default function SettingsPage() {
                         <input
                           value={row.name}
                           onChange={(e) => updateRow(idx, "name", e.target.value)}
+                          onKeyDown={onIngKeyDown}
                           placeholder="Tepung terigu"
                           className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
                         <input
                           type="number"
                           inputMode="decimal"
+                          step="any"
                           min="0"
                           value={row.quantity}
                           onChange={(e) => updateRow(idx, "quantity", e.target.value)}
+                          onKeyDown={onIngKeyDown}
                           placeholder="0"
                           className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
@@ -451,15 +461,18 @@ export default function SettingsPage() {
                           list="dl-units"
                           value={row.unit}
                           onChange={(e) => updateRow(idx, "unit", e.target.value)}
+                          onKeyDown={onIngKeyDown}
                           placeholder="g"
                           className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
                         <input
                           type="number"
-                          inputMode="numeric"
+                          inputMode="decimal"
+                          step="any"
                           min="0"
                           value={row.pricePerUnit}
                           onChange={(e) => updateRow(idx, "pricePerUnit", e.target.value)}
+                          onKeyDown={onIngKeyDown}
                           placeholder="0"
                           className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
