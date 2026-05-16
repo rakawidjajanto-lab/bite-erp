@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Topbar } from "@/components/layout/Topbar";
-import { Plus, X, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, X, Trash2, ChevronDown, ChevronUp, Copy } from "lucide-react";
 
 type Ingredient = {
   id: string;
@@ -108,6 +108,26 @@ export default function SettingsPage() {
     setNewVariant({ productName: "", flavorName: "", size: "", sellingPrice: "" });
     setNewIngRows([{ name: "", quantity: "", unit: "", pricePerUnit: "" }]);
     setShowAdd(false);
+  }
+
+  function handleDuplicate(v: Variant) {
+    setNewVariant({
+      productName: v.product.name,
+      flavorName: v.flavor?.name ?? "",
+      size: v.size,
+      sellingPrice: String(v.sellingPrice),
+    });
+    setNewIngRows(
+      v.ingredients.length > 0
+        ? v.ingredients.map((i) => ({
+            name: i.name,
+            quantity: String(i.quantity),
+            unit: i.unit,
+            pricePerUnit: String(i.pricePerUnit),
+          }))
+        : [{ name: "", quantity: "", unit: "", pricePerUnit: "" }]
+    );
+    setShowAdd(true);
   }
 
   async function addVariant(e: React.FormEvent) {
@@ -279,7 +299,7 @@ export default function SettingsPage() {
 
                 {/* Unflavored variants */}
                 {noFlavor.map((v) => (
-                  <VariantCard key={v.id} variant={v} onClick={() => { setSelected(v); setEditPrice(String(v.sellingPrice)); setExpandedIngredients(false); }} />
+                  <VariantCard key={v.id} variant={v} onClick={() => { setSelected(v); setEditPrice(String(v.sellingPrice)); setExpandedIngredients(false); }} onDuplicate={() => handleDuplicate(v)} />
                 ))}
 
                 {/* Flavored groups */}
@@ -287,7 +307,7 @@ export default function SettingsPage() {
                   <div key={flavorName} className="pl-3 border-l-2 border-gray-200 space-y-2">
                     <p className="text-xs font-medium text-gray-500">{flavorName}</p>
                     {flavorVariants.map((v) => (
-                      <VariantCard key={v.id} variant={v} onClick={() => { setSelected(v); setEditPrice(String(v.sellingPrice)); setExpandedIngredients(false); }} />
+                      <VariantCard key={v.id} variant={v} onClick={() => { setSelected(v); setEditPrice(String(v.sellingPrice)); setExpandedIngredients(false); }} onDuplicate={() => handleDuplicate(v)} />
                     ))}
                   </div>
                 ))}
@@ -758,18 +778,18 @@ export default function SettingsPage() {
   );
 }
 
-function VariantCard({ variant, onClick }: { variant: Variant; onClick: () => void }) {
+function VariantCard({ variant, onClick, onDuplicate }: { variant: Variant; onClick: () => void; onDuplicate: () => void }) {
   const totalCogs = cogs(variant);
   const grossMargin = margin(variant);
   const fmt = (n: number) =>
     new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 
   return (
-    <button
+    <div
       onClick={onClick}
-      className="w-full text-left bg-white rounded-xl border border-gray-200 px-4 py-3 hover:border-blue-300 hover:shadow-sm transition flex items-center justify-between gap-4"
+      className="w-full text-left bg-white rounded-xl border border-gray-200 px-4 py-3 hover:border-blue-300 hover:shadow-sm transition flex items-center justify-between gap-4 cursor-pointer group"
     >
-      <div>
+      <div className="min-w-0">
         <p className="font-medium text-gray-900 text-sm">{variant.size}</p>
         {!variant.isActive && <span className="text-xs text-gray-400">(inactive)</span>}
       </div>
@@ -786,7 +806,15 @@ function VariantCard({ variant, onClick }: { variant: Variant; onClick: () => vo
           <p className="text-gray-400">Margin</p>
           <p className="font-medium">{totalCogs > 0 ? `${grossMargin.toFixed(1)}%` : "—"}</p>
         </div>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onDuplicate(); }}
+          title="Duplicate variant"
+          className="opacity-0 group-hover:opacity-100 flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition"
+        >
+          <Copy size={13} /> Duplicate
+        </button>
       </div>
-    </button>
+    </div>
   );
 }
