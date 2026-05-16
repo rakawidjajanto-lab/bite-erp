@@ -22,6 +22,14 @@ type Variant = {
   ingredients: Ingredient[];
 };
 
+type PriceHistoryEntry = {
+  id: string;
+  ingredientName: string;
+  oldPrice: string;
+  newPrice: string;
+  changedAt: string;
+};
+
 type Venue = { id: string; name: string; location: string | null };
 
 const fmt = (n: number) =>
@@ -54,12 +62,20 @@ export default function SettingsPage() {
   const [editingIng, setEditingIng] = useState<string | null>(null);
   const [ingEdit, setIngEdit] = useState<Partial<Ingredient>>({});
   const [expandedIngredients, setExpandedIngredients] = useState(false);
+  const [priceHistory, setPriceHistory] = useState<PriceHistoryEntry[]>([]);
 
   // Venues
   const [newVenue, setNewVenue] = useState({ name: "", location: "", contactName: "", contactPhone: "" });
 
   const fetchVariants = useCallback(() => {
     fetch("/api/settings/variants").then((r) => r.json()).then(setVariants).catch(() => {});
+  }, []);
+
+  const fetchPriceHistory = useCallback((variantId: string) => {
+    fetch(`/api/settings/variants/${variantId}/price-history`)
+      .then((r) => r.json())
+      .then(setPriceHistory)
+      .catch(() => {});
   }, []);
 
   const fetchVenues = useCallback(() => {
@@ -70,6 +86,11 @@ export default function SettingsPage() {
     fetchVariants();
     fetchVenues();
   }, [fetchVariants, fetchVenues]);
+
+  useEffect(() => {
+    if (selected) fetchPriceHistory(selected.id);
+    else setPriceHistory([]);
+  }, [selected, fetchPriceHistory]);
 
   // Unique product names from variants (+ any that exist in DB) for datalist
   const productNames = [...new Set(variants.map((v) => v.product.name))].sort();
@@ -146,7 +167,8 @@ export default function SettingsPage() {
 
   async function saveIngEdit(ingId: string) {
     if (!selected) return;
-    await fetch(`/api/settings/variants/${selected.id}/ingredients/${ingId}`, {
+    const variantId = selected.id;
+    await fetch(`/api/settings/variants/${variantId}/ingredients/${ingId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(ingEdit),
@@ -158,6 +180,7 @@ export default function SettingsPage() {
     setEditingIng(null);
     setIngEdit({});
     fetchVariants();
+    fetchPriceHistory(variantId);
   }
 
   async function deleteIngredient(ingId: string) {
@@ -559,6 +582,26 @@ export default function SettingsPage() {
                   </div>
                 )}
               </div>
+
+              {/* Price history */}
+              {priceHistory.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Price History</p>
+                  <div className="border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-100">
+                    {priceHistory.map((h) => (
+                      <div key={h.id} className="flex items-center justify-between px-3 py-2 text-xs">
+                        <span className="font-medium text-gray-800">{h.ingredientName}</span>
+                        <span className="text-gray-500">
+                          {fmt(Number(h.oldPrice))} → {fmt(Number(h.newPrice))}
+                        </span>
+                        <span className="text-gray-400 shrink-0 ml-3">
+                          {new Date(h.changedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Deactivate toggle */}
               <div className="flex items-center justify-between pt-2 border-t border-gray-100">

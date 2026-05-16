@@ -8,7 +8,25 @@ export async function PATCH(req: Request, { params }: { params: { id: string; in
   if (body.name !== undefined) data.name = body.name;
   if (body.quantity !== undefined) data.quantity = body.quantity;
   if (body.unit !== undefined) data.unit = body.unit;
-  if (body.pricePerUnit !== undefined) data.pricePerUnit = body.pricePerUnit;
+
+  if (body.pricePerUnit !== undefined) {
+    const current = await prisma.productVariantIngredient.findUnique({
+      where: { id: params.ingId },
+      select: { name: true, pricePerUnit: true },
+    });
+    if (current && Number(current.pricePerUnit) !== Number(body.pricePerUnit)) {
+      await prisma.ingredientPriceHistory.create({
+        data: {
+          ingredientId: params.ingId,
+          ingredientName: (body.name as string | undefined) ?? current.name,
+          variantId: params.id,
+          oldPrice: current.pricePerUnit,
+          newPrice: body.pricePerUnit,
+        },
+      });
+    }
+    data.pricePerUnit = body.pricePerUnit;
+  }
 
   const ingredient = await prisma.productVariantIngredient.update({
     where: { id: params.ingId },
