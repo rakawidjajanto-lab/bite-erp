@@ -6,7 +6,7 @@ import { TransactionForm } from "@/components/forms/TransactionForm";
 import { formatIDR } from "@/lib/formatters/currency";
 import { CATEGORY_LABELS, CATEGORY_COLORS, type TransactionCategory } from "@/types";
 import { MonthYearPicker, monthBounds } from "@/components/filters/MonthYearPicker";
-import { Plus, Search, Filter, Trash2, CheckSquare, Square } from "lucide-react";
+import { Plus, Search, Filter, Trash2, CheckSquare, Square, Pencil, Check, X } from "lucide-react";
 import Link from "next/link";
 
 type Transaction = {
@@ -40,6 +40,8 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true);
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [editingDesc, setEditingDesc] = useState<string | null>(null);
+  const [descDraft, setDescDraft] = useState("");
 
   // Selection state
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -88,6 +90,18 @@ export default function TransactionsPage() {
     } else {
       setSelected(new Set(transactions.map((t) => t.id)));
     }
+  }
+
+  async function saveDesc(id: string) {
+    const trimmed = descDraft.trim();
+    if (!trimmed) return;
+    await fetch(`/api/transactions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ description: trimmed }),
+    });
+    setTransactions((prev) => prev.map((t) => t.id === id ? { ...t, description: trimmed } : t));
+    setEditingDesc(null);
   }
 
   async function deleteOne(id: string) {
@@ -260,30 +274,45 @@ export default function TransactionsPage() {
                       {new Date(tx.date).toLocaleDateString("id-ID")}
                     </td>
                     <td className="py-3 px-4 text-gray-900 max-w-[260px]">
-                      {tx.description.length > 30 ? (
-                        expanded.has(tx.id) ? (
-                          <span>
-                            {tx.description}{" "}
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setExpanded((p) => { const n = new Set(p); n.delete(tx.id); return n; }); }}
-                              className="text-blue-500 hover:underline text-xs"
-                            >
-                              less
-                            </button>
-                          </span>
-                        ) : (
-                          <span>
-                            {tx.description.slice(0, 30)}&hellip;{" "}
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setExpanded((p) => new Set([...p, tx.id])); }}
-                              className="text-blue-500 hover:underline text-xs"
-                            >
-                              more
-                            </button>
-                          </span>
-                        )
+                      {editingDesc === tx.id ? (
+                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            autoFocus
+                            value={descDraft}
+                            onChange={(e) => setDescDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveDesc(tx.id);
+                              if (e.key === "Escape") setEditingDesc(null);
+                            }}
+                            className="flex-1 min-w-0 border border-blue-400 rounded px-2 py-0.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                          <button onClick={() => saveDesc(tx.id)} className="shrink-0 p-0.5 text-green-600 hover:text-green-700">
+                            <Check size={14} />
+                          </button>
+                          <button onClick={() => setEditingDesc(null)} className="shrink-0 p-0.5 text-gray-400 hover:text-gray-600">
+                            <X size={14} />
+                          </button>
+                        </div>
                       ) : (
-                        tx.description
+                        <div className="flex items-center gap-1 group/desc">
+                          <span>
+                            {tx.description.length > 30 ? (
+                              expanded.has(tx.id) ? (
+                                <>{tx.description}{" "}<button onClick={(e) => { e.stopPropagation(); setExpanded((p) => { const n = new Set(p); n.delete(tx.id); return n; }); }} className="text-blue-500 hover:underline text-xs">less</button></>
+                              ) : (
+                                <>{tx.description.slice(0, 30)}&hellip;{" "}<button onClick={(e) => { e.stopPropagation(); setExpanded((p) => new Set([...p, tx.id])); }} className="text-blue-500 hover:underline text-xs">more</button></>
+                              )
+                            ) : tx.description}
+                          </span>
+                          {!bulkMode && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setEditingDesc(tx.id); setDescDraft(tx.description); }}
+                              className="shrink-0 opacity-0 group-hover/desc:opacity-100 text-gray-300 hover:text-blue-500 transition-opacity"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                          )}
+                        </div>
                       )}
                     </td>
                     <td className="py-3 px-4 whitespace-nowrap">
