@@ -11,8 +11,8 @@ export async function GET(req: Request) {
     SELECT month, money_in, money_out FROM (
       SELECT
         TO_CHAR(date, 'YYYY-MM') AS month,
-        SUM(COALESCE(amount_in, 0))  AS money_in,
-        SUM(COALESCE(amount_out, 0)) AS money_out
+        SUM(COALESCE("amountIn", 0))  AS money_in,
+        SUM(COALESCE("amountOut", 0)) AS money_out
       FROM transactions
       WHERE category NOT IN ('RND', 'INVESTMENT')
       GROUP BY TO_CHAR(date, 'YYYY-MM')
