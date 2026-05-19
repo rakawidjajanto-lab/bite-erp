@@ -42,6 +42,7 @@ export default function TransactionsPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingDesc, setEditingDesc] = useState<string | null>(null);
   const [descDraft, setDescDraft] = useState("");
+  const [editingCategory, setEditingCategory] = useState<string | null>(null);
 
   // Selection state
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -90,6 +91,18 @@ export default function TransactionsPage() {
     } else {
       setSelected(new Set(transactions.map((t) => t.id)));
     }
+  }
+
+  async function saveCategory(id: string, category: string) {
+    setEditingCategory(null);
+    setTransactions((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, category: category as TransactionCategory } : t))
+    );
+    await fetch(`/api/transactions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ category }),
+    });
   }
 
   async function saveDesc(id: string) {
@@ -316,12 +329,38 @@ export default function TransactionsPage() {
                       )}
                     </td>
                     <td className="py-3 px-4 whitespace-nowrap">
-                      <span
-                        className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium text-white"
-                        style={{ backgroundColor: CATEGORY_COLORS[tx.category] ?? "#94a3b8" }}
-                      >
-                        {CATEGORY_LABELS[tx.category] ?? tx.category}
-                      </span>
+                      {editingCategory === tx.id ? (
+                        <select
+                          autoFocus
+                          defaultValue={tx.category}
+                          onChange={(e) => saveCategory(tx.id, e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Escape") setEditingCategory(null); }}
+                          onBlur={() => setEditingCategory(null)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-xs border border-blue-400 rounded px-1.5 py-0.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
+                            <option key={k} value={k}>{v}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <div className="flex items-center gap-1 group/cat">
+                          <span
+                            className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium text-white"
+                            style={{ backgroundColor: CATEGORY_COLORS[tx.category] ?? "#94a3b8" }}
+                          >
+                            {CATEGORY_LABELS[tx.category] ?? tx.category}
+                          </span>
+                          {!bulkMode && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setEditingCategory(tx.id); }}
+                              className="shrink-0 opacity-0 group-hover/cat:opacity-100 text-gray-300 hover:text-blue-500 transition-opacity"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-gray-400 text-xs whitespace-nowrap">
                       {SOURCE_LABELS[tx.source] ?? tx.source}
