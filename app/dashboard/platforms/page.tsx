@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { formatIDR } from "@/lib/formatters/currency";
 import Link from "next/link";
-import { Upload } from "lucide-react";
+import { Upload, Trash2 } from "lucide-react";
 
 type OrderItem = {
   productName: string | null;
@@ -52,6 +52,15 @@ export default function PlatformsPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"ALL" | "TOKOPEDIA" | "SHOPEE">("ALL");
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this order? The linked transaction will also be removed.")) return;
+    setDeleting(id);
+    await fetch(`/api/platforms/orders/${id}`, { method: "DELETE" });
+    setOrders((prev) => prev.filter((o) => o.id !== id));
+    setDeleting(null);
+  }
 
   useEffect(() => {
     fetch("/api/platforms/orders")
@@ -150,6 +159,7 @@ export default function PlatformsPage() {
                       <th className="text-right py-3 px-4 text-gray-500 font-medium">Nett Received</th>
                       <th className="text-left py-3 px-4 text-gray-500 font-medium">Settlement Date</th>
                       <th className="text-left py-3 px-4 text-gray-500 font-medium">Status</th>
+                      <th className="py-3 px-4" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -195,6 +205,15 @@ export default function PlatformsPage() {
                         <td className="py-3 px-4">
                           <StatusBadge status={o.status} />
                         </td>
+                        <td className="py-3 px-2">
+                          <button
+                            onClick={() => handleDelete(o.id)}
+                            disabled={deleting === o.id}
+                            className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition disabled:opacity-40"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -216,7 +235,16 @@ export default function PlatformsPage() {
                     >
                       {o.platform.name}
                     </span>
-                    <StatusBadge status={o.status} />
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={o.status} />
+                      <button
+                        onClick={() => handleDelete(o.id)}
+                        disabled={deleting === o.id}
+                        className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition disabled:opacity-40"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                   <p className="text-sm font-medium text-gray-800">{productLabel(o.items)}</p>
                   <div className="flex items-center justify-between text-xs text-gray-400">

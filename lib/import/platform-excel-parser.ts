@@ -25,6 +25,14 @@ function parseNum(val: unknown): number {
   return parseFloat(String(val).replace(/[^0-9.-]/g, "")) || 0;
 }
 
+// Shopee exports use dot as thousand separator (e.g. "83.500" = 83500).
+// Strip all dots before parsing to avoid treating them as decimal points.
+function parseShopeeNum(val: unknown): number {
+  if (typeof val === "number") return val;
+  if (!val) return 0;
+  return parseInt(String(val).replace(/\./g, ""), 10) || 0;
+}
+
 function parseExcelDate(val: unknown): string | null {
   if (!val) return null;
   if (typeof val === "number") {
@@ -126,19 +134,26 @@ function parseShopee(sheet: XLSX.WorkSheet): NormalizedPlatformOrder[] {
     const status = String(first["Status Pesanan"] ?? "").trim();
     const settlementStatus: "SETTLED" | "PENDING" = status === "Selesai" ? "SETTLED" : "PENDING";
 
-    const grossAmount = group.reduce((s, r) => s + parseNum(r["Harga Setelah Diskon"]), 0);
+    const grossAmount = group.reduce((s, r) => s + parseShopeeNum(r["Harga Setelah Diskon"]), 0);
+    const platformFee = group.reduce(
+      (s, r) =>
+        s +
+        parseShopeeNum(r["Voucher Ditanggung Penjual"]) +
+        parseShopeeNum(r["Diskon Dari Penjual"]),
+      0
+    );
     const netAmount = group.reduce(
       (s, r) =>
         s +
-        parseNum(r["Total Pembayaran"]) -
-        parseNum(r["Diskon Dari Penjual"]) -
-        parseNum(r["Voucher Ditanggung Penjual"]),
+        parseShopeeNum(r["Total Pembayaran"]) -
+        parseShopeeNum(r["Diskon Dari Penjual"]) -
+        parseShopeeNum(r["Voucher Ditanggung Penjual"]),
       0
     );
 
     const items: NormalizedPlatformItem[] = group.map((r) => {
-      const qty = parseNum(r["Jumlah"]) || 1;
-      const price = parseNum(r["Harga Setelah Diskon"]);
+      const qty = parseShopeeNum(r["Jumlah"]) || 1;
+      const price = parseShopeeNum(r["Harga Setelah Diskon"]);
       return {
         productName: String(r["Nama Produk"] ?? "").trim(),
         quantity: qty,
@@ -155,7 +170,7 @@ function parseShopee(sheet: XLSX.WorkSheet): NormalizedPlatformOrder[] {
       settlementDate,
       settlementStatus,
       grossAmount,
-      platformFee: 0,
+      platformFee,
       netAmount,
       customerName: String(first["Username (Pembeli)"] ?? "").trim() || undefined,
       items,
@@ -173,10 +188,10 @@ export function parsePlatformExcel(buffer: ArrayBuffer): {
   const workbook = XLSX.read(new Uint8Array(buffer), { type: "array" });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
-  const allRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+  const allRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
     header: 1,
     defval: "",
-  }) as string[][];
+  }) as unknown[][];
 
   const row0Headers = allRows[0] ?? [];
   const row4Headers = allRows[4] ?? [];
