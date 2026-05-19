@@ -134,6 +134,7 @@ model PlatformOrder {
   discount        Decimal     @default(0) @db.Decimal(15, 2)
   netAmount       Decimal     @db.Decimal(15, 2)
   customerName    String?
+  settlementDate  DateTime?   @db.Date
   transactionId   String?     @unique
   rawData         Json?
   createdAt       DateTime    @default(now())
@@ -147,13 +148,14 @@ model PlatformOrder {
 }
 
 model PlatformOrderItem {
-  id        String   @id @default(cuid())
-  orderId   String
-  productId String?
-  flavorId  String?
-  quantity  Int
-  unitPrice Decimal  @db.Decimal(15, 2)
-  subtotal  Decimal  @db.Decimal(15, 2)
+  id          String   @id @default(cuid())
+  orderId     String
+  productId   String?
+  flavorId    String?
+  productName String?
+  quantity    Int
+  unitPrice   Decimal  @db.Decimal(15, 2)
+  subtotal    Decimal  @db.Decimal(15, 2)
 
   order   PlatformOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product?      @relation(fields: [productId], references: [id])
