@@ -4,14 +4,13 @@ import { useEffect, useState, useCallback } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { formatIDR } from "@/lib/formatters/currency";
 import { MonthYearPicker, monthBounds } from "@/components/filters/MonthYearPicker";
-import { Users, TrendingUp, TrendingDown } from "lucide-react";
+import { Users } from "lucide-react";
 
 type InvestorTx = {
   id: string;
   date: string;
   description: string;
   amountIn: string | null;
-  amountOut: string | null;
   investorName: string | null;
   resolvedName: string;
   notes: string | null;
@@ -20,15 +19,13 @@ type InvestorTx = {
 type InvestorSummary = {
   name: string;
   totalIn: number;
-  totalOut: number;
-  net: number;
   pct: number;
 };
 
 const INVESTOR_COLORS: Record<string, { bar: string; text: string; card: string }> = {
-  Raka:    { bar: "bg-blue-500",    text: "text-blue-700",    card: "border-blue-100 bg-blue-50"    },
-  Billa:   { bar: "bg-violet-500",  text: "text-violet-700",  card: "border-violet-100 bg-violet-50" },
-  Unknown: { bar: "bg-gray-400",    text: "text-gray-600",    card: "border-gray-100 bg-gray-50"    },
+  Raka:    { bar: "bg-blue-500",   text: "text-blue-700",   card: "border-blue-100 bg-blue-50"    },
+  Billa:   { bar: "bg-violet-500", text: "text-violet-700", card: "border-violet-100 bg-violet-50" },
+  Unknown: { bar: "bg-gray-400",   text: "text-gray-600",   card: "border-gray-100 bg-gray-50"    },
 };
 const FALLBACK_COLORS = { bar: "bg-amber-400", text: "text-amber-700", card: "border-amber-100 bg-amber-50" };
 
@@ -52,23 +49,21 @@ export default function InvestorsPage() {
 
   useEffect(() => { fetchInvestors(); }, [fetchInvestors]);
 
-  // Build per-investor summaries
-  const summaryMap: Record<string, { totalIn: number; totalOut: number }> = {};
+  const totalPool = transactions.reduce((s, tx) => s + parseFloat(tx.amountIn ?? "0"), 0);
+
+  const summaryMap: Record<string, number> = {};
   for (const tx of transactions) {
     const name = tx.resolvedName;
-    if (!summaryMap[name]) summaryMap[name] = { totalIn: 0, totalOut: 0 };
-    summaryMap[name].totalIn  += parseFloat(tx.amountIn  ?? "0");
-    summaryMap[name].totalOut += parseFloat(tx.amountOut ?? "0");
+    summaryMap[name] = (summaryMap[name] ?? 0) + parseFloat(tx.amountIn ?? "0");
   }
 
-  const totalNetPool = Object.values(summaryMap).reduce((s, v) => s + (v.totalIn - v.totalOut), 0);
-
   const investors: InvestorSummary[] = Object.entries(summaryMap)
-    .map(([name, { totalIn, totalOut }]) => {
-      const net = totalIn - totalOut;
-      return { name, totalIn, totalOut, net, pct: totalNetPool > 0 ? (net / totalNetPool) * 100 : 0 };
-    })
-    .sort((a, b) => b.net - a.net);
+    .map(([name, totalIn]) => ({
+      name,
+      totalIn,
+      pct: totalPool > 0 ? (totalIn / totalPool) * 100 : 0,
+    }))
+    .sort((a, b) => b.totalIn - a.totalIn);
 
   function formatDate(d: string) {
     return new Date(d).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
@@ -82,7 +77,7 @@ export default function InvestorsPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Investment Overview</h2>
-            <p className="text-sm text-gray-500">Net capital contributed by each investor</p>
+            <p className="text-sm text-gray-500">Capital contributions from each investor</p>
           </div>
           <MonthYearPicker year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m); }} />
         </div>
@@ -109,23 +104,7 @@ export default function InvestorsPage() {
                         {inv.pct.toFixed(1)}%
                       </span>
                     </div>
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div>
-                        <p className="text-xs text-gray-500 mb-0.5">Invested IN</p>
-                        <p className="text-sm font-semibold text-green-700">{formatIDR(inv.totalIn)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 mb-0.5">Withdrawn</p>
-                        <p className="text-sm font-semibold text-red-500">{formatIDR(inv.totalOut)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 mb-0.5">Net</p>
-                        <p className={`text-sm font-bold ${inv.net >= 0 ? "text-gray-900" : "text-red-600"}`}>
-                          {formatIDR(inv.net)}
-                        </p>
-                      </div>
-                    </div>
-                    {/* Mini ownership bar */}
+                    <p className="text-xl font-bold text-gray-900">{formatIDR(inv.totalIn)}</p>
                     <div className="h-1.5 bg-white/70 rounded-full overflow-hidden">
                       <div className={`h-full ${c.bar} rounded-full`} style={{ width: `${inv.pct}%` }} />
                     </div>
@@ -134,20 +113,20 @@ export default function InvestorsPage() {
               })}
             </div>
 
-            {/* Ownership breakdown bar */}
+            {/* Ownership breakdown */}
             <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-sm text-gray-700">Ownership Breakdown</h3>
-                <span className="text-xs text-gray-400">Total pool: {formatIDR(totalNetPool)}</span>
+                <span className="text-xs text-gray-400">Total: {formatIDR(totalPool)}</span>
               </div>
               {investors.map((inv, idx) => {
                 const c = colorFor(inv.name);
                 return (
-                  <div key={inv.name} className={`mb-4 ${idx === investors.length - 1 ? "mb-0" : ""}`}>
+                  <div key={inv.name} className={idx < investors.length - 1 ? "mb-4" : ""}>
                     <div className="flex justify-between text-sm mb-1.5">
                       <span className="font-medium text-gray-900">{inv.name}</span>
                       <span className="text-gray-500">
-                        {inv.pct.toFixed(1)}% &middot; {formatIDR(inv.net)}
+                        {inv.pct.toFixed(1)}% &middot; {formatIDR(inv.totalIn)}
                       </span>
                     </div>
                     <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
@@ -164,47 +143,26 @@ export default function InvestorsPage() {
                 <h3 className="font-semibold text-sm text-gray-700">Investment History</h3>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[520px]">
+                <table className="w-full text-sm min-w-[400px]">
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="text-left px-4 sm:px-5 py-3 text-xs font-medium text-gray-500">Date</th>
                       <th className="text-left px-4 sm:px-5 py-3 text-xs font-medium text-gray-500">Investor</th>
-                      <th className="text-left px-4 sm:px-5 py-3 text-xs font-medium text-gray-500">Type</th>
-                      <th className="text-right px-4 sm:px-5 py-3 text-xs font-medium text-green-600">Amount IN</th>
-                      <th className="text-right px-4 sm:px-5 py-3 text-xs font-medium text-red-500">Amount OUT</th>
+                      <th className="text-right px-4 sm:px-5 py-3 text-xs font-medium text-gray-500">Amount</th>
                       <th className="text-left px-4 sm:px-5 py-3 text-xs font-medium text-gray-500">Description</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {transactions.map((tx) => {
-                      const amtIn  = parseFloat(tx.amountIn  ?? "0");
-                      const amtOut = parseFloat(tx.amountOut ?? "0");
-                      const isIn = amtIn > 0;
-                      return (
-                        <tr key={tx.id} className="hover:bg-gray-50">
-                          <td className="px-4 sm:px-5 py-3 text-gray-500 whitespace-nowrap">{formatDate(tx.date)}</td>
-                          <td className="px-4 sm:px-5 py-3 font-medium text-gray-900">{tx.resolvedName}</td>
-                          <td className="px-4 sm:px-5 py-3">
-                            {isIn ? (
-                              <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
-                                <TrendingUp size={11} /> IN
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
-                                <TrendingDown size={11} /> OUT
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 sm:px-5 py-3 text-right font-semibold text-green-700 whitespace-nowrap">
-                            {amtIn > 0 ? formatIDR(amtIn) : "—"}
-                          </td>
-                          <td className="px-4 sm:px-5 py-3 text-right font-semibold text-red-500 whitespace-nowrap">
-                            {amtOut > 0 ? formatIDR(amtOut) : "—"}
-                          </td>
-                          <td className="px-4 sm:px-5 py-3 text-gray-600 max-w-[180px] truncate">{tx.description}</td>
-                        </tr>
-                      );
-                    })}
+                    {transactions.map((tx) => (
+                      <tr key={tx.id} className="hover:bg-gray-50">
+                        <td className="px-4 sm:px-5 py-3 text-gray-500 whitespace-nowrap">{formatDate(tx.date)}</td>
+                        <td className="px-4 sm:px-5 py-3 font-medium text-gray-900">{tx.resolvedName}</td>
+                        <td className="px-4 sm:px-5 py-3 text-right font-semibold text-green-700 whitespace-nowrap">
+                          {formatIDR(parseFloat(tx.amountIn ?? "0"))}
+                        </td>
+                        <td className="px-4 sm:px-5 py-3 text-gray-600 max-w-[200px] truncate">{tx.description}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>

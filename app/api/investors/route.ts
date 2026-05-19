@@ -14,7 +14,7 @@ export async function GET(req: Request) {
   const from = searchParams.get("from");
   const to = searchParams.get("to");
 
-  const where: Record<string, unknown> = { category: "INVESTMENT" };
+  const where: Record<string, unknown> = { category: "INVESTMENT", amountIn: { gt: 0 } };
   if (from || to) {
     where.date = {
       ...(from ? { gte: new Date(from) } : {}),
