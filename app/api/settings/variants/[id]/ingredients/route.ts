@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { name, quantity, unit, pricePerUnit } = await req.json();
 
   if (!name?.trim() || !unit?.trim() || quantity <= 0 || pricePerUnit < 0) {
@@ -10,7 +11,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const ingredient = await prisma.productVariantIngredient.create({
     data: {
-      variantId: params.id,
+      variantId: id,
       name: name.trim(),
       quantity,
       unit: unit.trim(),

@@ -5,8 +5,9 @@ type InventoryItem = { productId: string; flavorId?: string; quantity: number };
 
 export async function POST(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const body = await req.json();
   const { date, description, amount, subCategory, inventoryItems } = body as {
     date: string;
@@ -18,7 +19,7 @@ export async function POST(
 
   const expense = await prisma.rndExpense.create({
     data: {
-      projectId: params.id,
+      projectId: id,
       date: new Date(date),
       description,
       amount,
@@ -46,7 +47,7 @@ export async function POST(
           },
         });
         await prisma.inventory.upsert({
-          where: { productId_flavorId: { productId: item.productId, flavorId: item.flavorId ?? null } },
+          where: { productId_flavorId: { productId: item.productId, flavorId: (item.flavorId ?? null) as string } },
           update: { quantity: { decrement: item.quantity } },
           create: { productId: item.productId, flavorId: item.flavorId ?? null, quantity: -item.quantity },
         });

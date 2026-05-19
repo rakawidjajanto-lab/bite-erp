@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const order = await prisma.customerOrder.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       items: {
         include: {
@@ -27,7 +28,8 @@ type OrderItemInput = {
   unitPrice: number;
 };
 
-export async function PUT(req: Request, { params }: { params: { id: string } }) {
+export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { customerName, orderDate, items, deliveryFee, notes } = await req.json() as {
     customerName: string;
     orderDate: string;
@@ -36,7 +38,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     notes?: string;
   };
 
-  const existing = await prisma.customerOrder.findUnique({ where: { id: params.id } });
+  const existing = await prisma.customerOrder.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const fee = Number(deliveryFee ?? 0);
@@ -50,11 +52,11 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 
   // Delete old delivery transaction
   await prisma.transaction.deleteMany({
-    where: { referenceId: params.id, category: "OPERATIONAL", source: "ORDER" },
+    where: { referenceId: id, category: "OPERATIONAL", source: "ORDER" },
   });
 
   // Delete old items
-  await prisma.customerOrderItem.deleteMany({ where: { orderId: params.id } });
+  await prisma.customerOrderItem.deleteMany({ where: { orderId: id } });
 
   // Create new sales transaction
   const transaction = await prisma.transaction.create({
@@ -68,7 +70,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   });
 
   const order = await prisma.customerOrder.update({
-    where: { id: params.id },
+    where: { id: id },
     data: {
       orderDate: new Date(orderDate),
       customerName: customerName.trim(),
