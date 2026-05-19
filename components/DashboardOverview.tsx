@@ -29,6 +29,7 @@ type CashFlowMonth = {
   moneyIn: number;
   moneyOut: number;
   net: number;
+  runningBalance: number;
 };
 
 type AssetsData = {
@@ -99,7 +100,7 @@ export function DashboardOverview() {
 
   const expenseByCategory = plAllTime
     ? Object.entries(plAllTime.byCategory)
-        .filter(([cat, v]) => v.out > 0 && cat !== "INVESTMENT")
+        .filter(([, v]) => v.out > 0)
         .map(([cat, v]) => ({
           name: CATEGORY_LABELS[cat as TransactionCategory] ?? cat,
           value: v.out,
@@ -186,6 +187,14 @@ export function DashboardOverview() {
               <Bar dataKey="moneyOut" name="Money Out" fill="#f87171" radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
+          {cashFlow.length > 0 && (
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+              <span className="text-xs text-gray-500">Running Balance (all-time)</span>
+              <span className={`text-sm font-semibold ${cashFlow[cashFlow.length - 1].runningBalance >= 0 ? "text-green-600" : "text-red-600"}`}>
+                {formatIDR(cashFlow[cashFlow.length - 1].runningBalance)}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">

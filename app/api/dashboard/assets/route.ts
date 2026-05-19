@@ -6,11 +6,13 @@ export async function GET() {
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-  const [txAgg, inventoryItems, rndAgg, giveawayItems, physicalAssetAgg] = await Promise.all([
-    prisma.transaction.aggregate({
-      where: { category: { not: "INVESTMENT" } },
-      _sum: { amountIn: true, amountOut: true },
-    }),
+  const [txRaw, inventoryItems, rndAgg, giveawayItems, physicalAssetAgg] = await Promise.all([
+    prisma.$queryRaw<[{ total_in: string; total_out: string }]>`
+      SELECT
+        SUM(COALESCE("amountIn", 0))  AS total_in,
+        SUM(COALESCE("amountOut", 0)) AS total_out
+      FROM transactions
+    `,
     prisma.inventory.findMany({
       include: { product: { select: { unitCost: true } } },
     }),
@@ -26,8 +28,7 @@ export async function GET() {
   ]);
 
   const cashBalance =
-    parseFloat(String(txAgg._sum.amountIn ?? 0)) -
-    parseFloat(String(txAgg._sum.amountOut ?? 0));
+    Number(txRaw[0]?.total_in ?? 0) - Number(txRaw[0]?.total_out ?? 0);
 
   const inventoryValue = inventoryItems.reduce(
     (sum, item) =>

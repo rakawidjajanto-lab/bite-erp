@@ -28,7 +28,7 @@ export async function GET(req: Request) {
     byCategory[cat].in += amountIn;
     byCategory[cat].out += amountOut;
     if (cat === "INVESTMENT") {
-      // capital flows — excluded from P&L
+      totalOut += amountOut;  // investment spending still hits expenses; only amountIn is excluded
     } else if (cat === "RND") {
       rndTotal += amountOut;
     } else {
