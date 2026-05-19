@@ -33,19 +33,20 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { date, recipient, purpose, notes, items } = body as {
+  const { date, recipient, purpose, notes, items, linkedTransactionId } = body as {
     date: string;
     recipient: string;
     purpose: string;
     notes?: string;
     items: GiveawayItem[];
+    linkedTransactionId?: string;
   };
 
   const products = await prisma.product.findMany({
     where: { id: { in: items.map((i) => i.productId) } },
     select: { id: true, unitCost: true },
   });
-  const costMap = Object.fromEntries(products.map((p) => [p.id, p.unitCost]));
+  const costMap = Object.fromEntries(products.map((p) => [p.id, Number(p.unitCost)]));
 
   const giveaway = await prisma.marketingGiveaway.create({
     data: {
@@ -84,6 +85,31 @@ export async function POST(req: Request) {
       });
     })
   );
+
+  if (linkedTransactionId) {
+    // Stamp the giveaway id onto the existing transaction so it no longer appears as "unlinked".
+    await prisma.transaction.update({
+      where: { id: linkedTransactionId },
+      data: { referenceId: giveaway.id },
+    });
+  } else {
+    const totalCogs = items.reduce(
+      (sum, item) => sum + item.quantity * (costMap[item.productId] ?? 0),
+      0
+    );
+    if (totalCogs > 0) {
+      await prisma.transaction.create({
+        data: {
+          date: new Date(date),
+          description: `Marketing Giveaway: ${recipient} (${purpose})`,
+          category: "MARKETING",
+          amountOut: totalCogs,
+          source: "MANUAL",
+          referenceId: giveaway.id,
+        },
+      });
+    }
+  }
 
   return NextResponse.json(giveaway, { status: 201 });
 }

@@ -41,11 +41,13 @@ export default function MarketingPage() {
   const [importRows, setImportRows] = useState<ParsedGiveawayRow[]>([]);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
+  const [linkableTxns, setLinkableTxns] = useState<DirectExpense[]>([]);
   const [form, setForm] = useState({
     date: now.toISOString().split("T")[0],
     recipient: "",
     purpose: "ENDORSEMENT",
     notes: "",
+    linkedTransactionId: "",
   });
   const [items, setItems] = useState<FormItem[]>([{ productId: "", flavorId: "", quantity: 1 }]);
 
@@ -59,6 +61,13 @@ export default function MarketingPage() {
   }, [year, month]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    fetch("/api/transactions?category=MARKETING&referenceIdNull=1&limit=200")
+      .then((r) => r.json())
+      .then((d) => setLinkableTxns(d.items ?? []))
+      .catch(() => {});
+  }, []);
 
   function addItem() {
     setItems((prev) => [...prev, { productId: "", flavorId: "", quantity: 1 }]);
@@ -100,7 +109,7 @@ export default function MarketingPage() {
     });
     setSaving(false);
     setShowForm(false);
-    setForm({ date: now.toISOString().split("T")[0], recipient: "", purpose: "ENDORSEMENT", notes: "" });
+    setForm({ date: now.toISOString().split("T")[0], recipient: "", purpose: "ENDORSEMENT", notes: "", linkedTransactionId: "" });
     setItems([{ productId: "", flavorId: "", quantity: 1 }]);
     fetchData();
   }
@@ -441,6 +450,29 @@ export default function MarketingPage() {
                   <Plus size={14} />
                   Add item
                 </button>
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Link to Marketing Expense (optional)</label>
+                <select
+                  value={form.linkedTransactionId}
+                  onChange={(e) => setForm((f) => ({ ...f, linkedTransactionId: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">— None (auto-create transaction) —</option>
+                  {linkableTxns.map((tx) => (
+                    <option key={tx.id} value={tx.id}>
+                      {new Date(tx.date).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                      {" · "}{tx.description}
+                      {tx.amountOut ? ` · −${formatIDR(parseFloat(tx.amountOut))}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs mt-1 text-gray-400">
+                  {form.linkedTransactionId
+                    ? "Linked — no new transaction will be created (avoids double-counting)."
+                    : "No link — a MARKETING transaction will be created automatically."}
+                </p>
               </div>
 
               <div>
