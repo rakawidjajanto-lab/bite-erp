@@ -26,7 +26,9 @@ export async function GET(req: Request) {
     const amountOut = parseFloat(String(t.amountOut ?? 0));
     byCategory[cat].in += amountIn;
     byCategory[cat].out += amountOut;
-    if (cat === "RND") {
+    if (cat === "INVESTMENT") {
+      // capital flows — excluded from P&L
+    } else if (cat === "RND") {
       rndTotal += amountOut;
     } else {
       totalIn += amountIn;

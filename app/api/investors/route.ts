@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
+function detectInvestor(description: string, investorName: string | null): string {
+  if (investorName?.trim()) return investorName.trim();
+  const lower = description.toLowerCase();
+  if (lower.includes("nabilla") || lower.includes("billa")) return "Billa";
+  if (lower.includes("raka")) return "Raka";
+  return "Unknown";
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const from = searchParams.get("from");
@@ -28,5 +36,10 @@ export async function GET(req: Request) {
     },
   });
 
-  return NextResponse.json(transactions);
+  const result = transactions.map((tx) => ({
+    ...tx,
+    resolvedName: detectInvestor(tx.description, tx.investorName),
+  }));
+
+  return NextResponse.json(result);
 }
