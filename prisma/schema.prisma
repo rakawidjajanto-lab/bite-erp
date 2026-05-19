@@ -134,7 +134,7 @@ model PlatformOrder {
   discount        Decimal     @default(0) @db.Decimal(15, 2)
   netAmount       Decimal     @db.Decimal(15, 2)
   customerName    String?
-  settlementDate  DateTime?   @db.Date
+  settlementDate  DateTime?   @db.Date  @map("settlement_date")
   transactionId   String?     @unique
   rawData         Json?
   createdAt       DateTime    @default(now())
@@ -152,7 +152,7 @@ model PlatformOrderItem {
   orderId     String
   productId   String?
   flavorId    String?
-  productName String?
+  productName String?  @map("product_name")
   quantity    Int
   unitPrice   Decimal  @db.Decimal(15, 2)
   subtotal    Decimal  @db.Decimal(15, 2)
