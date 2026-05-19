@@ -7,7 +7,10 @@ export async function GET() {
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
   const [txAgg, inventoryItems, rndAgg, giveawayItems, physicalAssetAgg] = await Promise.all([
-    prisma.transaction.aggregate({ _sum: { amountIn: true, amountOut: true } }),
+    prisma.transaction.aggregate({
+      where: { category: { not: "INVESTMENT" } },
+      _sum: { amountIn: true, amountOut: true },
+    }),
     prisma.inventory.findMany({
       include: { product: { select: { unitCost: true } } },
     }),

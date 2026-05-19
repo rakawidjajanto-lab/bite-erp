@@ -75,6 +75,7 @@ function KPICard({
 
 export function DashboardOverview() {
   const [pl, setPL] = useState<PLData | null>(null);
+  const [plAllTime, setPlAllTime] = useState<PLData | null>(null);
   const [cashFlow, setCashFlow] = useState<CashFlowMonth[]>([]);
   const [assets, setAssets] = useState<AssetsData | null>(null);
   const now = new Date();
@@ -85,6 +86,9 @@ export function DashboardOverview() {
     fetch(`/api/finance/pl?year=${currentYear}&month=${currentMonth}`)
       .then((r) => r.json())
       .then(setPL);
+    fetch("/api/finance/pl?all=true")
+      .then((r) => r.json())
+      .then(setPlAllTime);
     fetch("/api/finance/cash-flow?months=6")
       .then((r) => r.json())
       .then(setCashFlow);
@@ -93,15 +97,31 @@ export function DashboardOverview() {
       .then(setAssets);
   }, [currentMonth, currentYear]);
 
-  const expenseByCategory = pl
-    ? Object.entries(pl.byCategory)
-        .filter(([, v]) => v.out > 0)
+  const expenseByCategory = plAllTime
+    ? Object.entries(plAllTime.byCategory)
+        .filter(([cat, v]) => v.out > 0 && cat !== "INVESTMENT")
         .map(([cat, v]) => ({
           name: CATEGORY_LABELS[cat as TransactionCategory] ?? cat,
           value: v.out,
           color: CATEGORY_COLORS[cat as TransactionCategory] ?? "#94a3b8",
         }))
     : [];
+
+  const projection = cashFlow.length >= 3 ? (() => {
+    const avgIn  = cashFlow.reduce((s, m) => s + m.moneyIn,  0) / cashFlow.length;
+    const avgOut = cashFlow.reduce((s, m) => s + m.moneyOut, 0) / cashFlow.length;
+    const lastMonth = cashFlow[cashFlow.length - 1].month;
+    return [1, 2, 3].map((offset) => {
+      const [y, mo] = lastMonth.split("-").map(Number);
+      const d = new Date(y, mo - 1 + offset, 1);
+      return {
+        month: d.toLocaleString("id-ID", { month: "short", year: "numeric" }),
+        moneyIn: avgIn,
+        moneyOut: avgOut,
+        net: avgIn - avgOut,
+      };
+    });
+  })() : [];
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -137,12 +157,9 @@ export function DashboardOverview() {
         />
         <KPICard
           label="Cash Balance"
-          value={
-            cashFlow.length > 0
-              ? formatIDRCompact(cashFlow.reduce((s, m) => s + m.net, 0))
-              : "—"
-          }
-          sub="6-month running net"
+          value={assets ? formatIDRCompact(assets.cashBalance) : "—"}
+          sub="All-time net cash"
+          positive={assets ? assets.cashBalance >= 0 : undefined}
           icon={Wallet}
         />
       </div>
@@ -279,6 +296,37 @@ export function DashboardOverview() {
           </div>
         </div>
       </div>
+
+      {/* Financial Projection */}
+      {projection.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Financial Projection — Next 3 Months</h3>
+          <p className="text-xs text-gray-400 mb-3">Based on 6-month average of operational transactions</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {projection.map((p) => (
+              <div key={p.month} className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{p.month}</p>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Revenue</span>
+                    <span className="text-green-600 font-medium">{formatIDRCompact(p.moneyIn)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Expenses</span>
+                    <span className="text-red-500 font-medium">{formatIDRCompact(p.moneyOut)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm border-t border-gray-100 pt-1 mt-1">
+                    <span className="font-medium text-gray-700">Net</span>
+                    <span className={`font-bold ${p.net >= 0 ? "text-gray-900" : "text-red-600"}`}>
+                      {formatIDRCompact(p.net)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* P&L table — horizontal scroll on mobile */}
       {pl && (

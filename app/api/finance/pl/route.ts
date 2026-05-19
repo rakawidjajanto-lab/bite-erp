@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
+  const allTime = searchParams.get("all") === "true";
   const year = parseInt(searchParams.get("year") ?? String(new Date().getFullYear()));
   const month = searchParams.get("month") ? parseInt(searchParams.get("month")!) : null;
 
@@ -10,7 +11,7 @@ export async function GET(req: Request) {
   const endDate = month ? new Date(year, month, 0) : new Date(year, 11, 31);
 
   const transactions = await prisma.transaction.findMany({
-    where: { date: { gte: startDate, lte: endDate } },
+    where: allTime ? {} : { date: { gte: startDate, lte: endDate } },
     select: { category: true, amountIn: true, amountOut: true },
   });
 
