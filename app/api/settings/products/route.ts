@@ -4,7 +4,18 @@ import { prisma } from "@/lib/db";
 export async function GET() {
   const products = await prisma.product.findMany({
     where: { isActive: true },
-    include: { flavors: { where: { isActive: true } } },
+    include: {
+      flavors: { where: { isActive: true } },
+      variants: {
+        where: { isActive: true },
+        select: {
+          id: true,
+          flavorId: true,
+          sellingPrice: true,
+          ingredients: { select: { quantity: true, pricePerUnit: true } },
+        },
+      },
+    },
   });
   return NextResponse.json(products);
 }

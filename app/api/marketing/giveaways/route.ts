@@ -42,11 +42,39 @@ export async function POST(req: Request) {
     linkedTransactionId?: string;
   };
 
-  const products = await prisma.product.findMany({
-    where: { id: { in: items.map((i) => i.productId) } },
-    select: { id: true, unitCost: true },
-  });
-  const costMap = Object.fromEntries(products.map((p) => [p.id, Number(p.unitCost)]));
+  const productIds = [...new Set(items.map((i) => i.productId))];
+  const [products, variants] = await Promise.all([
+    prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, unitCost: true },
+    }),
+    prisma.productVariant.findMany({
+      where: { productId: { in: productIds } },
+      select: {
+        productId: true,
+        flavorId: true,
+        sellingPrice: true,
+        ingredients: { select: { quantity: true, pricePerUnit: true } },
+      },
+    }),
+  ]);
+
+  const fallbackCost = Object.fromEntries(products.map((p) => [p.id, Number(p.unitCost)]));
+
+  function effectiveCost(productId: string, flavorId: string | undefined): number {
+    const variant = variants.find(
+      (v) => v.productId === productId && v.flavorId === (flavorId || null)
+    );
+    if (variant) {
+      const cogs = variant.ingredients.reduce(
+        (s, i) => s + Number(i.quantity) * Number(i.pricePerUnit),
+        0
+      );
+      if (cogs > 0) return cogs;
+      return Number(variant.sellingPrice);
+    }
+    return fallbackCost[productId] ?? 0;
+  }
 
   const giveaway = await prisma.marketingGiveaway.create({
     data: {
@@ -59,7 +87,7 @@ export async function POST(req: Request) {
           productId: item.productId,
           flavorId: item.flavorId ?? null,
           quantity: item.quantity,
-          unitCost: costMap[item.productId] ?? 0,
+          unitCost: effectiveCost(item.productId, item.flavorId),
         })),
       },
     },
@@ -69,7 +97,7 @@ export async function POST(req: Request) {
   await Promise.all(
     items.map(async (item) => {
       await prisma.inventory.upsert({
-        where: { productId_flavorId: { productId: item.productId, flavorId: item.flavorId ?? null } },
+        where: { productId_flavorId: { productId: item.productId, flavorId: (item.flavorId ?? null) as string } },
         update: { quantity: { decrement: item.quantity } },
         create: { productId: item.productId, flavorId: item.flavorId ?? null, quantity: -item.quantity },
       });
@@ -94,7 +122,7 @@ export async function POST(req: Request) {
     });
   } else {
     const totalCogs = items.reduce(
-      (sum, item) => sum + item.quantity * (costMap[item.productId] ?? 0),
+      (sum, item) => sum + item.quantity * effectiveCost(item.productId, item.flavorId || undefined),
       0
     );
     if (totalCogs > 0) {

@@ -7,7 +7,8 @@ import { MonthYearPicker, monthBounds } from "@/components/filters/MonthYearPick
 import { Plus, Trash2, X, Megaphone, Upload, Download } from "lucide-react";
 import { parseMarketingCsv, type ParsedGiveawayRow } from "@/lib/import/marketing-parser";
 
-type Product = { id: string; name: string; unitCost: number; flavors: { id: string; name: string }[] };
+type Variant = { id: string; flavorId: string | null; sellingPrice: number; ingredients: { quantity: number; pricePerUnit: number }[] };
+type Product = { id: string; name: string; unitCost: number; flavors: { id: string; name: string }[]; variants: Variant[] };
 type GiveawayItem = { id: string; quantity: number; unitCost: string; product: { name: string }; flavor: { name: string; colorHex: string | null } | null };
 type Giveaway = { id: string; date: string; recipient: string; purpose: string; notes: string | null; items: GiveawayItem[] };
 type DirectExpense = { id: string; date: string; description: string; amountOut: string | null };
@@ -91,10 +92,25 @@ export default function MarketingPage() {
     return g.items.reduce((s, i) => s + i.quantity * parseFloat(String(i.unitCost)), 0);
   }
 
+  function getPriceInfo(product: Product, flavorId: string): { price: number; source: "COGS" | "selling price" } {
+    const variant = product.variants.find((v) => v.flavorId === (flavorId || null));
+    if (variant) {
+      const cogs = variant.ingredients.reduce(
+        (s, i) => s + Number(i.quantity) * Number(i.pricePerUnit),
+        0
+      );
+      if (cogs > 0) return { price: cogs, source: "COGS" };
+      return { price: Number(variant.sellingPrice), source: "selling price" };
+    }
+    // No variant for this flavor — fall back to product-level unitCost
+    return { price: Number(product.unitCost), source: "selling price" };
+  }
+
   function formTotal() {
     return items.reduce((s, item) => {
       const prod = products.find((p) => p.id === item.productId);
-      return s + item.quantity * (prod?.unitCost ?? 0);
+      if (!prod) return s;
+      return s + item.quantity * getPriceInfo(prod, item.flavorId).price;
     }, 0);
   }
 
@@ -423,11 +439,14 @@ export default function MarketingPage() {
                               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                           </div>
-                          {selectedProduct && (
-                            <p className="text-xs text-gray-400 pb-2">
-                              @ {formatIDR(selectedProduct.unitCost)}/pcs
-                            </p>
-                          )}
+                          {selectedProduct && (() => {
+                            const { price, source } = getPriceInfo(selectedProduct, item.flavorId);
+                            return price > 0 ? (
+                              <p className="text-xs text-gray-400 pb-2">
+                                @ {formatIDR(price)}/pcs ({source})
+                              </p>
+                            ) : null;
+                          })()}
                           {items.length > 1 && (
                             <button
                               type="button"
