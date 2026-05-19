@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { formatIDR, formatIDRCompact } from "@/lib/formatters/currency";
+import { MonthYearPicker, monthBounds } from "@/components/filters/MonthYearPicker";
 import {
   BarChart,
   Bar,
@@ -74,11 +75,16 @@ function KPICard({
   );
 }
 
+type FlavorSaleRow = { name: string; units: number; revenue: number };
+
 export function DashboardOverview() {
   const [pl, setPL] = useState<PLData | null>(null);
   const [plAllTime, setPlAllTime] = useState<PLData | null>(null);
   const [cashFlow, setCashFlow] = useState<CashFlowMonth[]>([]);
   const [assets, setAssets] = useState<AssetsData | null>(null);
+  const [salesByFlavor, setSalesByFlavor] = useState<FlavorSaleRow[]>([]);
+  const [flavorYear, setFlavorYear] = useState<number | null>(null);
+  const [flavorMonth, setFlavorMonth] = useState<number | null>(null);
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
@@ -97,6 +103,17 @@ export function DashboardOverview() {
       .then((r) => r.json())
       .then(setAssets);
   }, [currentMonth, currentYear]);
+
+  const fetchFlavor = useCallback(() => {
+    const { from, to } = monthBounds(flavorYear, flavorMonth);
+    const q = from ? `?from=${from}&to=${to}` : "";
+    fetch(`/api/analytics/sales-by-flavor${q}`)
+      .then((r) => r.json())
+      .then((d) => setSalesByFlavor(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, [flavorYear, flavorMonth]);
+
+  useEffect(() => { fetchFlavor(); }, [fetchFlavor]);
 
   const expenseByCategory = plAllTime
     ? Object.entries(plAllTime.byCategory)
@@ -389,6 +406,49 @@ export function DashboardOverview() {
           </div>
         </div>
       )}
+
+      {/* Sales by Flavor */}
+      <div>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700">Sales by Flavor</h3>
+            <p className="text-xs text-gray-400">Direct orders + Tokopedia/Shopee combined</p>
+          </div>
+          <MonthYearPicker
+            year={flavorYear}
+            month={flavorMonth}
+            onChange={(y, m) => { setFlavorYear(y); setFlavorMonth(m); }}
+          />
+        </div>
+        {salesByFlavor.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-200 p-6 text-center text-gray-400 text-sm">
+            No sales data yet
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">#</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">Flavor</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-gray-500">Units Sold</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-gray-500">Revenue</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {salesByFlavor.map((row, i) => (
+                  <tr key={i} className="hover:bg-gray-50">
+                    <td className="px-4 py-2.5 text-xs text-gray-400">{i + 1}</td>
+                    <td className="px-4 py-2.5 text-gray-800 font-medium">{row.name}</td>
+                    <td className="px-4 py-2.5 text-right text-gray-600">{row.units.toLocaleString("id-ID")}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-green-600">{formatIDR(row.revenue)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

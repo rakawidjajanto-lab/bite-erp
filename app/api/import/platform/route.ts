@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { parsePlatformExcel } from "@/lib/import/platform-excel-parser";
 
+type ProductWithFlavors = {
+  id: string;
+  name: string;
+  flavors: { id: string; name: string }[];
+};
+
 export async function POST(req: Request) {
   let platformName = "";
   let imported = 0;
@@ -25,6 +31,11 @@ export async function POST(req: Request) {
     if (!platformRecord) {
       platformRecord = await prisma.platform.create({ data: { name: platformName } });
     }
+
+    // Fetch all products with their flavors once — used for matching across all order items.
+    const allProducts: ProductWithFlavors[] = await prisma.product.findMany({
+      include: { flavors: { select: { id: true, name: true } } },
+    });
 
     for (const order of orders) {
       try {
@@ -59,7 +70,7 @@ export async function POST(req: Request) {
             });
 
             await prisma.platformOrderItem.deleteMany({ where: { orderId: existing.id } });
-            await createOrderItems(existing.id, order.items);
+            await createOrderItems(existing.id, order.items, allProducts);
             updated++;
           } else {
             skipped++;
@@ -95,11 +106,11 @@ export async function POST(req: Request) {
             customerName: order.customerName,
             settlementDate: order.settlementDate ? new Date(order.settlementDate) : null,
             transactionId,
-            rawData: order.rawData,
+            rawData: order.rawData as object,
           },
         });
 
-        await createOrderItems(created.id, order.items);
+        await createOrderItems(created.id, order.items, allProducts);
         imported++;
       } catch (err) {
         errors.push(`${order.externalOrderId}: ${String(err)}`);
@@ -124,7 +135,8 @@ export async function POST(req: Request) {
 
 async function createOrderItems(
   orderId: string,
-  items: { productName: string; quantity: number; unitPrice: number }[]
+  items: { productName: string; quantity: number; unitPrice: number }[],
+  allProducts: ProductWithFlavors[]
 ) {
   for (const item of items) {
     if (!item.productName) continue;
@@ -132,10 +144,11 @@ async function createOrderItems(
     let productId: string | null = null;
     let flavorId: string | null = null;
 
-    const product = await prisma.product.findFirst({
-      where: { name: { contains: item.productName, mode: "insensitive" } },
-      include: { flavors: { select: { id: true, name: true } } },
-    });
+    // The Excel item name is long (e.g. "Premium Grade Matcha - 23g Protein Gelato (Cup 150ml)").
+    // Find the product whose name appears as a substring inside the item name.
+    const product = allProducts.find((p) =>
+      item.productName.toLowerCase().includes(p.name.toLowerCase())
+    );
 
     if (product) {
       productId = product.id;
