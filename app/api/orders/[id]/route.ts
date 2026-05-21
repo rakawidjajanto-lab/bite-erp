@@ -117,3 +117,29 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
   return NextResponse.json(order);
 }
+
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
+  const order = await prisma.customerOrder.findUnique({
+    where: { id },
+    select: { transactionId: true },
+  });
+  if (!order) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  // Delete order first — removes the FK (order.transactionId → transaction.id)
+  // CustomerOrderItem rows are cascade-deleted by the DB
+  await prisma.customerOrder.delete({ where: { id } });
+
+  // Now safely delete linked transactions
+  await Promise.all([
+    order.transactionId
+      ? prisma.transaction.delete({ where: { id: order.transactionId } }).catch(() => {})
+      : Promise.resolve(),
+    prisma.transaction.deleteMany({
+      where: { referenceId: id, category: "OPERATIONAL", source: "ORDER" },
+    }),
+  ]);
+
+  return NextResponse.json({ ok: true });
+}

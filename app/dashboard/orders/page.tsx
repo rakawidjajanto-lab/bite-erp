@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Topbar } from "@/components/layout/Topbar";
-import { Plus, Upload, X, Download, Pencil, ShoppingCart } from "lucide-react";
+import { Plus, Upload, X, Download, Pencil, ShoppingCart, Trash2 } from "lucide-react";
 import { parseOrdersCsv } from "@/lib/import/orders-parser";
 
 type Ingredient = { id: string; name: string; quantity: number; unit: string; pricePerUnit: number };
@@ -80,6 +80,7 @@ export default function OrdersPage() {
   const [deliveryFee, setDeliveryFee] = useState("");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   // Import modal
   const [showImport, setShowImport] = useState(false);
@@ -177,6 +178,14 @@ export default function OrdersPage() {
       fetchOrders();
       fetch("/api/orders/customers").then((r) => r.json()).then(setCustomers).catch(() => {});
     }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("Are you sure you want to delete this order?")) return;
+    setDeleting(id);
+    await fetch(`/api/orders/${id}`, { method: "DELETE" });
+    setDeleting(null);
+    fetchOrders();
   }
 
   async function handleImportFile(file: File) {
@@ -282,6 +291,14 @@ export default function OrdersPage() {
                     className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
                   >
                     <Pencil size={14} />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(order.id)}
+                    disabled={deleting === order.id}
+                    className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition disabled:opacity-40"
+                    title="Delete order"
+                  >
+                    <Trash2 size={14} />
                   </button>
                 </div>
               </div>
