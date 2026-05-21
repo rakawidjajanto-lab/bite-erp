@@ -27,6 +27,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+
+  // If this is the primary SALES transaction for a CustomerOrder, delete the order first
+  // (CustomerOrder.transactionId is a FK → Transaction.id; deleting order removes that FK)
+  const linkedOrder = await prisma.customerOrder.findFirst({
+    where: { transactionId: id },
+    select: { id: true },
+  });
+
+  if (linkedOrder) {
+    await prisma.customerOrder.delete({ where: { id: linkedOrder.id } });
+    // Clean up the linked delivery-fee OPERATIONAL transaction
+    await prisma.transaction.deleteMany({
+      where: { referenceId: linkedOrder.id, source: "ORDER" },
+    });
+  }
+
   await prisma.transaction.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }
