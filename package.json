@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/apply-rls.js && next dev",
     "build": "prisma generate && node scripts/apply-rls.js && next build",
     "start": "next start",
     "db:generate": "prisma generate",

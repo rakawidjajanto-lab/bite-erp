@@ -20,14 +20,16 @@ function splitStatements(sql) {
     }
     if (ch === ";" && !inDollarQuote) {
       const stmt = current.trim();
-      if (stmt && !stmt.startsWith("--")) statements.push(stmt);
+      const hasCode = stmt.split("\n").some((l) => { const t = l.trim(); return t && !t.startsWith("--"); });
+      if (hasCode) statements.push(stmt);
       current = "";
     } else {
       current += ch;
     }
   }
   const last = current.trim();
-  if (last && !last.startsWith("--")) statements.push(last);
+  const lastHasCode = last.split("\n").some((l) => { const t = l.trim(); return t && !t.startsWith("--"); });
+  if (lastHasCode) statements.push(last);
   return statements;
 }
 
@@ -37,10 +39,16 @@ async function main() {
     "utf-8"
   );
   const statements = splitStatements(sql);
+  let applied = 0;
   for (const stmt of statements) {
-    await prisma.$executeRawUnsafe(stmt);
+    try {
+      await prisma.$executeRawUnsafe(stmt);
+      applied++;
+    } catch (e) {
+      console.warn(`  ⚠ skipped statement (${e.message.split("\n")[0]})`);
+    }
   }
-  console.log(`✓ DB config: applied ${statements.length} statements`);
+  console.log(`✓ DB config: applied ${applied}/${statements.length} statements`);
 }
 
 main()

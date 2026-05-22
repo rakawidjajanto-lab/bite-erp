@@ -6,6 +6,17 @@
 -- Prisma's postgres connection will always bypass it.
 ALTER ROLE postgres BYPASSRLS;
 
+-- Add discount columns to customer_orders (idempotent)
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'DiscountType') THEN
+    CREATE TYPE "DiscountType" AS ENUM ('PERCENTAGE', 'FIXED');
+  END IF;
+END $$;
+
+ALTER TABLE "customer_orders"
+  ADD COLUMN IF NOT EXISTS "discountType"  "DiscountType" NOT NULL DEFAULT 'FIXED',
+  ADD COLUMN IF NOT EXISTS "discountValue" DECIMAL(15,2)  NOT NULL DEFAULT 0;
+
 -- Drop any existing allow_all policies (cleanup from previous approach)
 DO $$ DECLARE t text; BEGIN
   FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP

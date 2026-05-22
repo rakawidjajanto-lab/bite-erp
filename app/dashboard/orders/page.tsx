@@ -30,6 +30,8 @@ type Order = {
   customerName: string;
   subtotal: number;
   deliveryFee: number;
+  discountType: "PERCENTAGE" | "FIXED";
+  discountValue: number;
   total: number;
   notes: string | null;
   items: OrderItem[];
@@ -78,6 +80,8 @@ export default function OrdersPage() {
   const [orderDate, setOrderDate] = useState(today());
   const [items, setItems] = useState<FormItem[]>([{ variantId: "", quantity: 1, unitPrice: 0 }]);
   const [deliveryFee, setDeliveryFee] = useState("");
+  const [discountType, setDiscountType] = useState<"PERCENTAGE" | "FIXED">("PERCENTAGE");
+  const [discountValue, setDiscountValue] = useState("");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -107,6 +111,8 @@ export default function OrdersPage() {
     setOrderDate(today());
     setItems([{ variantId: "", quantity: 1, unitPrice: 0 }]);
     setDeliveryFee("");
+    setDiscountType("PERCENTAGE");
+    setDiscountValue("");
     setNotes("");
     setStep(1);
     setShowModal(true);
@@ -124,6 +130,8 @@ export default function OrdersPage() {
       }))
     );
     setDeliveryFee(Number(order.deliveryFee) > 0 ? String(order.deliveryFee) : "");
+    setDiscountType(order.discountType ?? "PERCENTAGE");
+    setDiscountValue(Number(order.discountValue) > 0 ? String(order.discountValue) : "");
     setNotes(order.notes || "");
     setStep(1);
     setShowModal(true);
@@ -156,13 +164,15 @@ export default function OrdersPage() {
 
   const subtotal = items.reduce((s, it) => s + it.quantity * it.unitPrice, 0);
   const fee = parseFloat(deliveryFee) || 0;
-  const total = subtotal + fee;
+  const dValue = parseFloat(discountValue) || 0;
+  const discountAmount = discountType === "PERCENTAGE" ? subtotal * (dValue / 100) : dValue;
+  const total = subtotal - discountAmount + fee;
 
   async function submit() {
     if (!customerName.trim() || !orderDate || items.some((it) => !it.variantId)) return;
     setSubmitting(true);
 
-    const body = { customerName: customerName.trim(), orderDate, items, deliveryFee: fee, notes };
+    const body = { customerName: customerName.trim(), orderDate, items, deliveryFee: fee, notes, discountType, discountValue: dValue };
     const url = editingOrder ? `/api/orders/${editingOrder.id}` : "/api/orders";
     const method = editingOrder ? "PUT" : "POST";
 
@@ -175,6 +185,8 @@ export default function OrdersPage() {
     setSubmitting(false);
     if (res.ok) {
       setShowModal(false);
+      setDiscountType("PERCENTAGE");
+      setDiscountValue("");
       fetchOrders();
       fetch("/api/orders/customers").then((r) => r.json()).then(setCustomers).catch(() => {});
     }
@@ -419,6 +431,35 @@ export default function OrdersPage() {
                     </div>
                   </div>
 
+                  {/* Discount */}
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Discount (optional)</label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setDiscountType((t) => t === "PERCENTAGE" ? "FIXED" : "PERCENTAGE")}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-xs font-medium bg-white hover:bg-gray-50 shrink-0 min-w-[52px]"
+                      >
+                        {discountType === "PERCENTAGE" ? "%" : "IDR"}
+                      </button>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        max={discountType === "PERCENTAGE" ? 100 : undefined}
+                        value={discountValue}
+                        onChange={(e) => setDiscountValue(e.target.value)}
+                        placeholder="0"
+                        className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    {discountAmount > 0 && (
+                      <p className="text-xs text-green-600 mt-1">
+                        − {fmt(discountAmount)} off{discountType === "PERCENTAGE" && ` (${dValue}%)`}
+                      </p>
+                    )}
+                  </div>
+
                   <div className="flex gap-2 pt-1">
                     <button type="button" onClick={() => setShowModal(false)} className="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition">Cancel</button>
                     <button
@@ -470,6 +511,12 @@ export default function OrdersPage() {
                       <span>Subtotal</span>
                       <span>{fmt(subtotal)}</span>
                     </div>
+                    {discountAmount > 0 && (
+                      <div className="flex justify-between text-green-600">
+                        <span>Discount{discountType === "PERCENTAGE" ? ` (${dValue}%)` : ""}</span>
+                        <span>− {fmt(discountAmount)}</span>
+                      </div>
+                    )}
                     {fee > 0 && (
                       <div className="flex justify-between text-gray-600">
                         <span>Delivery Fee</span>

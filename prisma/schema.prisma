@@ -75,6 +75,11 @@ enum AssetCategory {
   OTHER
 }
 
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
 enum ImportSource {
   EXCEL
   TOKOPEDIA_CSV
@@ -497,9 +502,11 @@ model CustomerOrder {
   id            String   @id @default(cuid())
   orderDate     DateTime @db.Date
   customerName  String
-  subtotal      Decimal  @db.Decimal(15, 2)
-  deliveryFee   Decimal  @default(0) @db.Decimal(15, 2)
-  total         Decimal  @db.Decimal(15, 2)
+  subtotal      Decimal      @db.Decimal(15, 2)
+  deliveryFee   Decimal      @default(0) @db.Decimal(15, 2)
+  discountType  DiscountType @default(FIXED)
+  discountValue Decimal      @default(0) @db.Decimal(15, 2)
+  total         Decimal      @db.Decimal(15, 2)
   notes         String?
   transactionId String?  @unique
   createdAt     DateTime @default(now())

@@ -45,12 +45,14 @@ type OrderItemInput = {
 };
 
 export async function POST(req: Request) {
-  const { customerName, orderDate, items, deliveryFee, notes } = await req.json() as {
+  const { customerName, orderDate, items, deliveryFee, notes, discountType, discountValue } = await req.json() as {
     customerName: string;
     orderDate: string;
     items: OrderItemInput[];
     deliveryFee?: number;
     notes?: string;
+    discountType?: "PERCENTAGE" | "FIXED";
+    discountValue?: number;
   };
 
   if (!customerName?.trim() || !orderDate || !items?.length) {
@@ -58,8 +60,11 @@ export async function POST(req: Request) {
   }
 
   const fee = Number(deliveryFee ?? 0);
+  const dType = discountType ?? "FIXED";
+  const dValue = Number(discountValue ?? 0);
   const subtotal = items.reduce((sum, it) => sum + it.quantity * it.unitPrice, 0);
-  const total = subtotal + fee;
+  const discountAmount = dType === "PERCENTAGE" ? subtotal * (dValue / 100) : dValue;
+  const total = subtotal - discountAmount + fee;
 
   const transaction = await prisma.transaction.create({
     data: {
@@ -67,7 +72,7 @@ export async function POST(req: Request) {
       description: `Order – ${customerName.trim()}`,
       category: "SALES",
       source: "ORDER",
-      amountIn: subtotal,
+      amountIn: subtotal - discountAmount,
     },
   });
 
@@ -77,6 +82,8 @@ export async function POST(req: Request) {
       customerName: customerName.trim(),
       subtotal,
       deliveryFee: fee,
+      discountType: dType,
+      discountValue: discountAmount,
       total,
       notes: notes || null,
       transactionId: transaction.id,

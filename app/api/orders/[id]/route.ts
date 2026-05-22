@@ -30,20 +30,25 @@ type OrderItemInput = {
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { customerName, orderDate, items, deliveryFee, notes } = await req.json() as {
+  const { customerName, orderDate, items, deliveryFee, notes, discountType, discountValue } = await req.json() as {
     customerName: string;
     orderDate: string;
     items: OrderItemInput[];
     deliveryFee?: number;
     notes?: string;
+    discountType?: "PERCENTAGE" | "FIXED";
+    discountValue?: number;
   };
 
   const existing = await prisma.customerOrder.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const fee = Number(deliveryFee ?? 0);
+  const dType = discountType ?? "FIXED";
+  const dValue = Number(discountValue ?? 0);
   const subtotal = items.reduce((sum, it) => sum + it.quantity * it.unitPrice, 0);
-  const total = subtotal + fee;
+  const discountAmount = dType === "PERCENTAGE" ? subtotal * (dValue / 100) : dValue;
+  const total = subtotal - discountAmount + fee;
 
   // Delete old sales transaction
   if (existing.transactionId) {
@@ -65,7 +70,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       description: `Order – ${customerName.trim()}`,
       category: "SALES",
       source: "ORDER",
-      amountIn: subtotal,
+      amountIn: subtotal - discountAmount,
     },
   });
 
@@ -76,6 +81,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       customerName: customerName.trim(),
       subtotal,
       deliveryFee: fee,
+      discountType: dType,
+      discountValue: discountAmount,
       total,
       notes: notes || null,
       transactionId: transaction.id,
