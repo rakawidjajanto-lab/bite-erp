@@ -53,7 +53,7 @@ export async function POST(req: Request) {
             const tx = await prisma.transaction.create({
               data: {
                 date: new Date(order.orderDate),
-                description: `${platformName} order #${order.externalOrderId}`,
+                description: order.description ?? `${platformName} order #${order.externalOrderId}`,
                 category: "SALES",
                 amountIn: order.netAmount,
                 source: txSource as never,
@@ -83,7 +83,7 @@ export async function POST(req: Request) {
           const tx = await prisma.transaction.create({
             data: {
               date: new Date(order.orderDate),
-              description: `${platformName} order #${order.externalOrderId}`,
+              description: order.description ?? `${platformName} order #${order.externalOrderId}`,
               category: "SALES",
               amountIn: order.netAmount,
               source: txSource as never,

@@ -15,6 +15,7 @@ export type NormalizedPlatformOrder = {
   platformFee: number;
   netAmount: number;
   customerName?: string;
+  description?: string;
   items: NormalizedPlatformItem[];
   rawData: Record<string, unknown>;
 };
@@ -181,6 +182,34 @@ function parseShopee(sheet: XLSX.WorkSheet): NormalizedPlatformOrder[] {
   return orders;
 }
 
+function parseShopeeSettlement(allRows: unknown[][]): NormalizedPlatformOrder[] {
+  const startDateRaw = allRows[6]?.[1];
+  const endDateRaw = allRows[7]?.[1];
+  const grossAmount = Math.abs(parseNum(allRows[10]?.[3]));
+  const platformFee = Math.abs(parseNum(allRows[33]?.[3]));
+  const netAmount = Math.abs(parseNum(allRows[47]?.[3]));
+
+  const startDate = parseExcelDate(startDateRaw) ?? new Date().toISOString().split("T")[0];
+  const endDate = parseExcelDate(endDateRaw) ?? startDate;
+
+  const externalOrderId = `SETTLEMENT-${startDate}-to-${endDate}`;
+
+  return [
+    {
+      externalOrderId,
+      orderDate: startDate,
+      settlementDate: endDate,
+      settlementStatus: "SETTLED",
+      grossAmount,
+      platformFee,
+      netAmount,
+      description: `Shopee Income Settlement ${startDate} – ${endDate}`,
+      items: [],
+      rawData: { startDate, endDate, grossAmount, platformFee, netAmount },
+    },
+  ];
+}
+
 export function parsePlatformExcel(buffer: ArrayBuffer): {
   platform: "tokopedia" | "shopee";
   orders: NormalizedPlatformOrder[];
@@ -193,12 +222,17 @@ export function parsePlatformExcel(buffer: ArrayBuffer): {
     defval: "",
   }) as unknown[][];
 
+  const row0Col0 = String(allRows[0]?.[0] ?? "").trim();
   const row0Headers = allRows[0] ?? [];
   const row4Headers = allRows[4] ?? [];
 
+  const isShopeeSettlement = row0Col0 === "Laporan Penghasilan";
   const hasShopeeHeader = row0Headers.some((h) => String(h).includes("No. Pesanan"));
   const hasTokopediaHeader = row4Headers.some((h) => String(h).includes("Order/Adjustment ID"));
 
+  if (isShopeeSettlement) {
+    return { platform: "shopee", orders: parseShopeeSettlement(allRows) };
+  }
   if (hasTokopediaHeader) {
     return { platform: "tokopedia", orders: parseTokopedia(sheet) };
   }
@@ -207,6 +241,6 @@ export function parsePlatformExcel(buffer: ArrayBuffer): {
   }
 
   throw new Error(
-    "Unrecognized file format. Expected Tokopedia (header at row 5 with 'Order/Adjustment ID') or Shopee (header at row 1 with 'No. Pesanan')."
+    "Unrecognized file format. Expected Tokopedia (row 5 'Order/Adjustment ID'), Shopee order export (row 1 'No. Pesanan'), or Shopee settlement (row 1 'Laporan Penghasilan')."
   );
 }
