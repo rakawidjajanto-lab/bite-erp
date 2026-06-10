@@ -16,6 +16,7 @@ export type NormalizedPlatformOrder = {
   netAmount: number;
   customerName?: string;
   description?: string;
+  feeReferenceId?: string;
   items: NormalizedPlatformItem[];
   rawData: Record<string, unknown>;
 };
@@ -204,6 +205,7 @@ function parseShopeeSettlement(allRows: unknown[][]): NormalizedPlatformOrder[] 
       platformFee,
       netAmount,
       description: `Shopee Income Settlement ${startDate} – ${endDate}`,
+      feeReferenceId: `PLATFORM-FEE-${startDate}-to-${endDate}`,
       items: [],
       rawData: { startDate, endDate, grossAmount, platformFee, netAmount },
     },

@@ -69,6 +69,7 @@ export async function POST(req: Request) {
               },
             });
 
+            await createPlatformFeeTx(order, txSource);
             await prisma.platformOrderItem.deleteMany({ where: { orderId: existing.id } });
             await createOrderItems(existing.id, order.items, allProducts);
             updated++;
@@ -90,6 +91,7 @@ export async function POST(req: Request) {
             },
           });
           transactionId = tx.id;
+          await createPlatformFeeTx(order, txSource);
         }
 
         const created = await prisma.platformOrder.create({
@@ -130,6 +132,33 @@ export async function POST(req: Request) {
     skipped,
     failed: errors.length,
     errors: errors.slice(0, 5),
+  });
+}
+
+async function createPlatformFeeTx(
+  order: { feeReferenceId?: string; platformFee: number; settlementDate: string | null; orderDate: string; description?: string; externalOrderId: string },
+  txSource: string
+) {
+  if (!order.feeReferenceId || order.platformFee <= 0) return;
+
+  const existing = await prisma.transaction.findFirst({
+    where: { referenceId: order.feeReferenceId },
+    select: { id: true },
+  });
+  if (existing) return;
+
+  const feeLabel = order.description?.replace("Income Settlement", "Platform Fee") ?? `Platform Fee ${order.externalOrderId}`;
+  const feeDate = order.settlementDate ? new Date(order.settlementDate) : new Date(order.orderDate);
+
+  await prisma.transaction.create({
+    data: {
+      date: feeDate,
+      description: feeLabel,
+      category: "OPERATIONAL",
+      amountOut: order.platformFee,
+      source: txSource as never,
+      referenceId: order.feeReferenceId,
+    },
   });
 }
 
