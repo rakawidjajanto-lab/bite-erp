@@ -148,7 +148,7 @@ async function createPlatformFeeTx(
   if (existing) return;
 
   const feeLabel = order.description?.replace("Income Settlement", "Platform Fee") ?? `Platform Fee ${order.externalOrderId}`;
-  const feeDate = order.settlementDate ? new Date(order.settlementDate) : new Date(order.orderDate);
+  const feeDate = new Date(order.orderDate);
 
   await prisma.transaction.create({
     data: {
