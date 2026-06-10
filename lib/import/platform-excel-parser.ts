@@ -120,6 +120,51 @@ function parseTokopedia(sheet: XLSX.WorkSheet): NormalizedPlatformOrder[] {
   return orders;
 }
 
+function parseTokopediaCompleted(sheet: XLSX.WorkSheet): NormalizedPlatformOrder[] {
+  // Row 0 = headers, Row 1 = field descriptions, data from Row 2
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+    range: 0,
+    defval: "",
+  });
+  const dataRows = rows.slice(1); // drop the Row 1 description row
+
+  const grouped = groupBy(dataRows, (r) => String(r["Order ID"] ?? "").trim());
+  const orders: NormalizedPlatformOrder[] = [];
+
+  for (const [orderId, group] of grouped) {
+    if (!orderId) continue;
+    const first = group[0];
+
+    const status = String(first["Order Status"] ?? "").trim();
+    const settlementStatus: "SETTLED" | "PENDING" = status === "Completed" ? "SETTLED" : "PENDING";
+
+    // Order-level totals are repeated per item row; take from first row
+    const grossAmount = parseNum(first["Total Order Amount"]);
+    const netAmount = parseNum(first["Seller received amount"]);
+    const platformFee = Math.max(0, grossAmount - netAmount);
+
+    const items: NormalizedPlatformItem[] = group.map((r) => ({
+      productName: String(r["Product Name"] ?? "").trim(),
+      quantity: parseNum(r["Quantity of Product Purchased"]) || 1,
+      unitPrice: parseNum(r["Product Price"]),
+    }));
+
+    orders.push({
+      externalOrderId: orderId,
+      orderDate: parseExcelDate(first["Order Creation Date"]) ?? new Date().toISOString().split("T")[0],
+      settlementDate: parseExcelDate(first["Order Completed Time"]),
+      settlementStatus,
+      grossAmount,
+      platformFee,
+      netAmount,
+      items,
+      rawData: first,
+    });
+  }
+
+  return orders;
+}
+
 function parseShopee(sheet: XLSX.WorkSheet): NormalizedPlatformOrder[] {
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     range: 0,
@@ -225,15 +270,20 @@ export function parsePlatformExcel(buffer: ArrayBuffer): {
   }) as unknown[][];
 
   const row0Col0 = String(allRows[0]?.[0] ?? "").trim();
+  const row1Col0 = String(allRows[1]?.[0] ?? "").trim();
   const row0Headers = allRows[0] ?? [];
   const row4Headers = allRows[4] ?? [];
 
   const isShopeeSettlement = row0Col0 === "Laporan Penghasilan";
+  const isTokopediaCompleted = row0Col0 === "Order ID" && row1Col0 === "Platform unique order ID.";
   const hasShopeeHeader = row0Headers.some((h) => String(h).includes("No. Pesanan"));
   const hasTokopediaHeader = row4Headers.some((h) => String(h).includes("Order/Adjustment ID"));
 
   if (isShopeeSettlement) {
     return { platform: "shopee", orders: parseShopeeSettlement(allRows) };
+  }
+  if (isTokopediaCompleted) {
+    return { platform: "tokopedia", orders: parseTokopediaCompleted(sheet) };
   }
   if (hasTokopediaHeader) {
     return { platform: "tokopedia", orders: parseTokopedia(sheet) };
@@ -243,6 +293,6 @@ export function parsePlatformExcel(buffer: ArrayBuffer): {
   }
 
   throw new Error(
-    "Unrecognized file format. Expected Tokopedia (row 5 'Order/Adjustment ID'), Shopee order export (row 1 'No. Pesanan'), or Shopee settlement (row 1 'Laporan Penghasilan')."
+    "Unrecognized file format. Expected Tokopedia income report, Tokopedia completed orders, Shopee order export, or Shopee income settlement."
   );
 }
