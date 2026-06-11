@@ -309,6 +309,8 @@ function parseShopeeSettlement(workbook: XLSX.WorkBook): NormalizedPlatformOrder
       grossAmount: parseNum(r[iGross]),
       platformFee: Math.abs(parseNum(r[iFee])),
       netAmount: parseNum(r[iNet]),
+      feeReferenceId: `SHOPEE-FEE-${orderId}`,
+      feeDescription: `Shopee platform fee #${orderId}`,
       items: [],
       rawData: { orderId },
     });
