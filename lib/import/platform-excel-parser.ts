@@ -53,16 +53,6 @@ function parseExcelDate(val: unknown): string | null {
   return parsed.toISOString().split("T")[0];
 }
 
-function findCell(rows: unknown[][], labelCol0: string): unknown {
-  const row = rows.find((r) => String((r as unknown[])[0] ?? "").trim() === labelCol0);
-  if (!row) return undefined;
-  const cells = row as unknown[];
-  // Scan past col 0 for the first non-empty numeric-ish value; handles merged cells that
-  // push the value into a column other than index 1.
-  return cells.slice(1).find(
-    (v) => typeof v === "number" || (typeof v === "string" && v.trim() !== "" && !isNaN(parseFloat(v)))
-  );
-}
 
 function groupBy<T>(rows: T[], key: (r: T) => string): Map<string, T[]> {
   const map = new Map<string, T[]>();
@@ -281,31 +271,44 @@ function parseShopeeSettlement(workbook: XLSX.WorkBook): NormalizedPlatformOrder
   const incomeSheet = workbook.Sheets["Income"];
   if (!incomeSheet) return [];
 
-  // Header at row index 5 (row 6 in Excel), data from row index 6
   const allRows = XLSX.utils.sheet_to_json<unknown[]>(incomeSheet, {
     header: 1,
     defval: "",
   }) as unknown[][];
 
+  // Find header row: first row where col 0 === "No."
+  const headerIdx = allRows.findIndex((r) => String((r as unknown[])[0] ?? "").trim() === "No.");
+  if (headerIdx === -1) return [];
+  const header = allRows[headerIdx] as unknown[];
+
+  // Build column index map from header
+  const col = (name: string) => header.findIndex((h) => String(h ?? "").trim() === name);
+  const iNo       = col("No.");
+  const iOrderId  = col("No. Pesanan");
+  const iDate     = col("Waktu Pesanan Dibuat");
+  const iSettle   = col("Tanggal Dana Dilepaskan");
+  const iGross    = col("Harga Asli Produk");
+  const iFee      = col("Biaya Layanan");
+  const iNet      = col("Total Penghasilan");
+
   const orders: NormalizedPlatformOrder[] = [];
 
-  for (const row of allRows.slice(6)) {
+  for (const row of allRows.slice(headerIdx + 1)) {
     const r = row as unknown[];
-    // Col 0 is a sequential row number in data rows; skip summary/total rows where it is absent
-    if (typeof r[0] !== "number") continue;
+    // Skip summary/total rows — data rows have a sequential number in the "No." column
+    if (typeof r[iNo] !== "number") continue;
 
-    const orderId = String(r[1] ?? "").trim();   // Col 1: No. Pesanan
+    const orderId = String(r[iOrderId] ?? "").trim();
     if (!orderId) continue;
 
     orders.push({
       externalOrderId: orderId,
-      orderDate: parseExcelDate(r[4]) ?? new Date().toISOString().split("T")[0],  // Col 4: Waktu Pesanan Dibuat
-      settlementDate: parseExcelDate(r[6]),                                        // Col 6: Tanggal Dana Dilepaskan
+      orderDate: parseExcelDate(r[iDate]) ?? new Date().toISOString().split("T")[0],
+      settlementDate: parseExcelDate(r[iSettle]),
       settlementStatus: "SETTLED",
-      grossAmount: parseNum(r[7]),                  // Col 7:  Harga Asli Produk
-      platformFee: Math.abs(parseNum(r[24])),       // Col 24: Biaya Layanan (negative)
-      netAmount: parseNum(r[32]),                   // Col 32: Total Penghasilan → amountIn
-      customerName: String(r[3] ?? "").trim() || undefined,  // Col 3: Username (Pembeli)
+      grossAmount: parseNum(r[iGross]),
+      platformFee: Math.abs(parseNum(r[iFee])),
+      netAmount: parseNum(r[iNet]),
       items: [],
       rawData: { orderId },
     });
