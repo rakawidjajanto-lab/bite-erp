@@ -17,6 +17,31 @@ ALTER TABLE "customer_orders"
   ADD COLUMN IF NOT EXISTS "discountType"  "DiscountType" NOT NULL DEFAULT 'FIXED',
   ADD COLUMN IF NOT EXISTS "discountValue" DECIMAL(15,2)  NOT NULL DEFAULT 0;
 
+-- supply_items: raw ingredient/material stock for R&D (idempotent)
+CREATE TABLE IF NOT EXISTS "supply_items" (
+  "id"           TEXT          NOT NULL,
+  "name"         TEXT          NOT NULL,
+  "unit"         TEXT          NOT NULL,
+  "gramsPerUnit" DECIMAL(10,4) NOT NULL DEFAULT 1,
+  "stock"        DECIMAL(10,4) NOT NULL DEFAULT 0,
+  "pricePerUnit" DECIMAL(15,2) NOT NULL DEFAULT 0,
+  "createdAt"    TIMESTAMP(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "supply_items_pkey" PRIMARY KEY ("id")
+);
+
+-- rnd_materials: materials consumed by an R&D project (idempotent)
+CREATE TABLE IF NOT EXISTS "rnd_materials" (
+  "id"            TEXT          NOT NULL,
+  "projectId"     TEXT          NOT NULL,
+  "supplyItemId"  TEXT          NOT NULL,
+  "quantityUsed"  DECIMAL(10,4) NOT NULL,
+  "valuationCost" DECIMAL(15,2) NOT NULL,
+  "createdAt"     TIMESTAMP(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "rnd_materials_pkey"    PRIMARY KEY ("id"),
+  CONSTRAINT "rnd_materials_proj_fk" FOREIGN KEY ("projectId")    REFERENCES "rnd_projects"("id")  ON DELETE CASCADE,
+  CONSTRAINT "rnd_materials_item_fk" FOREIGN KEY ("supplyItemId") REFERENCES "supply_items"("id")
+);
+
 -- Drop any existing allow_all policies (cleanup from previous approach)
 DO $$ DECLARE t text; BEGIN
   FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
@@ -52,3 +77,5 @@ ALTER TABLE "product_variant_ingredients" DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "ingredient_price_history"    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "customer_orders"             DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "customer_order_items"        DISABLE ROW LEVEL SECURITY;
+ALTER TABLE "supply_items"                DISABLE ROW LEVEL SECURITY;
+ALTER TABLE "rnd_materials"               DISABLE ROW LEVEL SECURITY;

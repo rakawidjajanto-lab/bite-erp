@@ -24,6 +24,13 @@ type Expense = {
   inventoryUsages: InventoryUsage[];
 };
 
+type Material = {
+  id: string;
+  quantityUsed: string;
+  valuationCost: string;
+  supplyItem: { id: string; name: string; unit: string };
+};
+
 type RndProject = {
   id: string;
   name: string;
@@ -32,12 +39,16 @@ type RndProject = {
   startDate: string;
   endDate: string | null;
   totalExpenses: number;
+  totalMaterialCost: number;
   targetFlavor: { name: string } | null;
   expenses: Expense[];
+  materials: Material[];
 };
 
+type SupplyItem = { id: string; name: string; unit: string; pricePerUnit: string; stock: string };
 type Product = { id: string; name: string; unitCost: number; flavors: { id: string; name: string }[] };
 type FormInventoryItem = { productId: string; flavorId: string; quantity: number };
+type FormMaterial = { supplyItemId: string; quantityUsed: string };
 type DirectExpense = { id: string; date: string; description: string; amountOut: string | null };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -52,6 +63,7 @@ export default function RndPage() {
   const [projects, setProjects] = useState<RndProject[]>([]);
   const [directExpenses, setDirectExpenses] = useState<DirectExpense[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [supplyItems, setSupplyItems] = useState<SupplyItem[]>([]);
   const [year, setYear] = useState<number | null>(null);
   const [month, setMonth] = useState<number | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -65,6 +77,7 @@ export default function RndPage() {
     subCategory: "ingredients",
   });
   const [inventoryItems, setInventoryItems] = useState<FormInventoryItem[]>([]);
+  const [formMaterials, setFormMaterials] = useState<FormMaterial[]>([]);
   const [showImport, setShowImport] = useState<string | null>(null);
   const [showGlobalImport, setShowGlobalImport] = useState(false);
   const [importRows, setImportRows] = useState<ParsedRndExpense[]>([]);
@@ -82,13 +95,27 @@ export default function RndPage() {
   useEffect(() => {
     fetchProjects();
     fetch("/api/settings/products").then((r) => r.json()).then(setProducts).catch(() => {});
+    fetch("/api/supply-items").then((r) => r.json()).then(setSupplyItems).catch(() => {});
   }, [fetchProjects]);
 
   async function createProject(e: React.FormEvent) {
     e.preventDefault();
-    await fetch("/api/rnd", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newProject) });
+    const materials = formMaterials
+      .filter((m) => m.supplyItemId && parseFloat(m.quantityUsed) > 0)
+      .map((m) => ({ supplyItemId: m.supplyItemId, quantityUsed: parseFloat(m.quantityUsed) }));
+    await fetch("/api/rnd", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...newProject, materials }),
+    });
     setShowNewProject(false);
+    setFormMaterials([]);
+    setNewProject({ name: "", description: "", startDate: new Date().toISOString().split("T")[0] });
     fetchProjects();
+    // Refresh supply items since stock was deducted
+    if (materials.length > 0) {
+      fetch("/api/supply-items").then((r) => r.json()).then(setSupplyItems).catch(() => {});
+    }
   }
 
   async function addExpense(projectId: string) {
@@ -132,6 +159,18 @@ export default function RndPage() {
     setNewExpense({ date: new Date().toISOString().split("T")[0], description: "", amount: 0, subCategory: "ingredients" });
   }
 
+  function addFormMaterial() {
+    setFormMaterials((prev) => [...prev, { supplyItemId: "", quantityUsed: "" }]);
+  }
+
+  function removeFormMaterial(idx: number) {
+    setFormMaterials((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function updateFormMaterial(idx: number, field: keyof FormMaterial, value: string) {
+    setFormMaterials((prev) => prev.map((m, i) => i === idx ? { ...m, [field]: value } : m));
+  }
+
   function handleRndFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -147,9 +186,7 @@ export default function RndPage() {
   async function handleRndImport(projectId: string | null) {
     if (!importRows.length) return;
     setImporting(true);
-    const body = projectId
-      ? { projectId, rows: importRows }
-      : { rows: importRows };
+    const body = projectId ? { projectId, rows: importRows } : { rows: importRows };
     const res = await fetch("/api/rnd/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -161,14 +198,12 @@ export default function RndPage() {
     fetchProjects();
   }
 
-  // Template for per-project import (no projectName column needed)
   const RND_TEMPLATE =
     "data:text/csv;charset=utf-8,date,description,subCategory,amount\n" +
     "2024-01-15,Matcha powder trial,ingredients,150000\n" +
     "2024-01-16,pH testing kit,equipment,85000\n" +
     "2024-01-17,Taste testing session,testing,50000";
 
-  // Template for global import (projectName column required)
   const RND_GLOBAL_TEMPLATE =
     "data:text/csv;charset=utf-8,projectName,date,description,subCategory,amount\n" +
     "Matcha Trial Q2,2024-01-15,Matcha powder purchase,ingredients,150000\n" +
@@ -191,15 +226,13 @@ export default function RndPage() {
               onClick={() => { setShowGlobalImport(true); setImportRows([]); setImportResult(null); }}
               className="flex items-center gap-1.5 border border-gray-300 text-gray-600 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition min-h-[44px]"
             >
-              <Upload size={15} />
-              Import CSV
+              <Upload size={15} /> Import CSV
             </button>
             <button
               onClick={() => setShowNewProject(true)}
               className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition min-h-[44px]"
             >
-              <Plus size={15} />
-              New Project
+              <Plus size={15} /> New Project
             </button>
           </div>
         </div>
@@ -228,47 +261,87 @@ export default function RndPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-3 ml-4">
-                  <span className="text-sm font-bold text-red-500">{formatIDR(p.totalExpenses)}</span>
+                  <div className="text-right">
+                    {p.totalMaterialCost > 0 && (
+                      <p className="text-xs text-orange-600 font-medium">
+                        {formatIDR(p.totalMaterialCost)} materials
+                      </p>
+                    )}
+                    {p.totalExpenses > 0 && (
+                      <p className="text-sm font-bold text-red-500">{formatIDR(p.totalExpenses)}</p>
+                    )}
+                  </div>
                   {expanded === p.id ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
                 </div>
               </div>
 
               {expanded === p.id && (
-                <div className="border-t border-gray-100 p-4 space-y-3">
+                <div className="border-t border-gray-100 p-4 space-y-4">
                   {p.description && <p className="text-sm text-gray-600">{p.description}</p>}
 
-                  <div className="space-y-2">
-                    {p.expenses.map((exp) => (
-                      <div key={exp.id} className="py-2 border-b border-gray-50 last:border-0">
-                        <div className="flex items-start justify-between text-sm">
-                          <div>
-                            <p className="text-gray-800 font-medium">{exp.description}</p>
-                            <p className="text-xs text-gray-400">
-                              {new Date(exp.date).toLocaleDateString("id-ID")} · {exp.subCategory}
-                            </p>
-                          </div>
-                          {Number(exp.amount) > 0 && (
-                            <span className="font-medium text-red-500 shrink-0 ml-2">
-                              {formatIDR(parseFloat(exp.amount))}
+                  {/* Materials used */}
+                  {p.materials.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Materials Used</p>
+                      <div className="bg-orange-50 rounded-xl border border-orange-100 divide-y divide-orange-100">
+                        {p.materials.map((m) => (
+                          <div key={m.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                            <div className="flex items-center gap-2">
+                              <Package size={13} className="text-orange-400 shrink-0" />
+                              <span className="text-gray-800 font-medium">{m.supplyItem.name}</span>
+                              <span className="text-gray-500 text-xs">
+                                {parseFloat(m.quantityUsed).toLocaleString("id-ID")} {m.supplyItem.unit}
+                              </span>
+                            </div>
+                            <span className="text-orange-700 font-semibold text-xs">
+                              {formatIDR(parseFloat(m.valuationCost))}
                             </span>
+                          </div>
+                        ))}
+                        <div className="flex justify-between px-3 py-2 text-xs font-bold text-orange-800 bg-orange-100/50">
+                          <span>Total material cost</span>
+                          <span>{formatIDR(p.totalMaterialCost)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Expenses */}
+                  {p.expenses.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Expenses</p>
+                      {p.expenses.map((exp) => (
+                        <div key={exp.id} className="py-2 border-b border-gray-50 last:border-0">
+                          <div className="flex items-start justify-between text-sm">
+                            <div>
+                              <p className="text-gray-800 font-medium">{exp.description}</p>
+                              <p className="text-xs text-gray-400">
+                                {new Date(exp.date).toLocaleDateString("id-ID")} · {exp.subCategory}
+                              </p>
+                            </div>
+                            {Number(exp.amount) > 0 && (
+                              <span className="font-medium text-red-500 shrink-0 ml-2">
+                                {formatIDR(parseFloat(exp.amount))}
+                              </span>
+                            )}
+                          </div>
+                          {exp.inventoryUsages.length > 0 && (
+                            <div className="mt-1.5 space-y-0.5">
+                              {exp.inventoryUsages.map((u) => (
+                                <div key={u.id} className="flex items-center gap-2 text-xs text-gray-500">
+                                  <Package size={10} className="shrink-0 text-gray-400" />
+                                  <span>
+                                    {u.product.name}{u.flavor ? ` – ${u.flavor.name}` : ""}: {u.quantity} pcs
+                                    <span className="text-gray-400"> (−{formatIDR(u.quantity * parseFloat(String(u.unitCost)))} stock value)</span>
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
                           )}
                         </div>
-                        {exp.inventoryUsages.length > 0 && (
-                          <div className="mt-1.5 space-y-0.5">
-                            {exp.inventoryUsages.map((u) => (
-                              <div key={u.id} className="flex items-center gap-2 text-xs text-gray-500">
-                                <Package size={10} className="shrink-0 text-gray-400" />
-                                <span>
-                                  {u.product.name}{u.flavor ? ` – ${u.flavor.name}` : ""}: {u.quantity} pcs
-                                  <span className="text-gray-400"> (−{formatIDR(u.quantity * parseFloat(String(u.unitCost)))} stock value)</span>
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
 
                   {showExpense !== p.id && (
                     <button
@@ -282,7 +355,6 @@ export default function RndPage() {
                   {showExpense === p.id ? (
                     <div className="bg-gray-50 rounded-xl p-3 space-y-3">
                       <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Log Expense</p>
-
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="text-xs text-gray-500 mb-1 block">Date</label>
@@ -326,18 +398,10 @@ export default function RndPage() {
                           className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs focus:outline-none"
                         />
                       </div>
-
-                      {/* Inventory items used */}
                       <div>
                         <div className="flex items-center justify-between mb-1.5">
-                          <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                            Inventory Used (optional)
-                          </label>
-                          <button
-                            type="button"
-                            onClick={addInventoryItem}
-                            className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-0.5"
-                          >
+                          <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Inventory Used (optional)</label>
+                          <button type="button" onClick={addInventoryItem} className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-0.5">
                             <Plus size={11} /> Add item
                           </button>
                         </div>
@@ -381,11 +445,7 @@ export default function RndPage() {
                                       className="w-14 border border-gray-200 rounded px-2 py-1.5 text-xs focus:outline-none"
                                       placeholder="Qty"
                                     />
-                                    <button
-                                      type="button"
-                                      onClick={() => removeInventoryItem(idx)}
-                                      className="p-1 text-red-400 hover:bg-red-50 rounded"
-                                    >
+                                    <button type="button" onClick={() => removeInventoryItem(idx)} className="p-1 text-red-400 hover:bg-red-50 rounded">
                                       <Trash2 size={12} />
                                     </button>
                                   </div>
@@ -395,14 +455,9 @@ export default function RndPage() {
                           </div>
                         )}
                       </div>
-
                       <div className="flex gap-2">
-                        <button onClick={cancelExpense} className="flex-1 border border-gray-300 text-gray-600 rounded-lg py-2 text-xs font-medium">
-                          Cancel
-                        </button>
-                        <button onClick={() => addExpense(p.id)} className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-xs font-medium hover:bg-blue-700">
-                          Save
-                        </button>
+                        <button onClick={cancelExpense} className="flex-1 border border-gray-300 text-gray-600 rounded-lg py-2 text-xs font-medium">Cancel</button>
+                        <button onClick={() => addExpense(p.id)} className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-xs font-medium hover:bg-blue-700">Save</button>
                       </div>
                     </div>
                   ) : (
@@ -439,6 +494,7 @@ export default function RndPage() {
         )}
       </div>
 
+      {/* ── Import per-project modal ── */}
       {showImport && (
         <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-3 sm:p-6">
           <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
@@ -449,68 +505,21 @@ export default function RndPage() {
             <div className="p-5 space-y-4">
               <div className="bg-gray-50 rounded-xl p-3 text-xs text-gray-500 space-y-1">
                 <p className="font-medium text-gray-700">Required columns: <code className="bg-gray-200 px-1 rounded">date, description, subCategory, amount</code></p>
-                <p>subCategory values: <code className="bg-gray-200 px-1 rounded">ingredients</code> · <code className="bg-gray-200 px-1 rounded">equipment</code> · <code className="bg-gray-200 px-1 rounded">testing</code> · <code className="bg-gray-200 px-1 rounded">labor</code> · <code className="bg-gray-200 px-1 rounded">other</code></p>
                 <a href={RND_TEMPLATE} download="rnd_import_template.csv" className="flex items-center gap-1 text-blue-600 hover:text-blue-700 mt-1.5">
                   <Download size={12} /> Download template CSV
                 </a>
               </div>
-
-              <div>
-                <label className="text-xs text-gray-500 mb-1.5 block font-medium">Select CSV file</label>
-                <input
-                  type="file"
-                  accept=".csv,.xlsx,.xls"
-                  onChange={handleRndFileSelect}
-                  className="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                />
-              </div>
-
-              {importRows.length > 0 && !importResult && (
-                <div>
-                  <p className="text-xs font-medium text-gray-600 mb-2">{importRows.length} rows ready to import</p>
-                  <div className="overflow-x-auto rounded-xl border border-gray-200 max-h-48">
-                    <table className="w-full text-xs min-w-[400px]">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Date</th>
-                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Description</th>
-                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Category</th>
-                          <th className="text-right px-3 py-2 text-gray-500 font-medium">Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {importRows.slice(0, 20).map((row, i) => (
-                          <tr key={i}>
-                            <td className="px-3 py-2 text-gray-500">{row.date}</td>
-                            <td className="px-3 py-2 text-gray-800 max-w-[160px] truncate">{row.description}</td>
-                            <td className="px-3 py-2 text-gray-500">{row.subCategory}</td>
-                            <td className="px-3 py-2 text-right text-red-500 font-medium">{formatIDR(row.amount)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {importRows.length > 20 && <p className="text-xs text-gray-400 mt-1">Showing first 20 of {importRows.length} rows</p>}
-                </div>
-              )}
-
+              <input type="file" accept=".csv,.xlsx,.xls" onChange={handleRndFileSelect} className="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
               {importResult && (
-                <div className="bg-green-50 rounded-xl px-4 py-3 text-sm text-green-800 space-y-0.5">
+                <div className="bg-green-50 rounded-xl px-4 py-3 text-sm text-green-800">
                   <p className="font-semibold">Import complete</p>
                   <p>{importResult.imported} imported · {importResult.skipped} skipped · {importResult.failed} failed</p>
                 </div>
               )}
-
               <div className="flex gap-2">
-                <button onClick={() => setShowImport(null)} className="flex-1 border border-gray-300 text-gray-600 rounded-xl py-2.5 text-sm font-medium">
-                  {importResult ? "Close" : "Cancel"}
-                </button>
+                <button onClick={() => setShowImport(null)} className="flex-1 border border-gray-300 text-gray-600 rounded-xl py-2.5 text-sm font-medium">{importResult ? "Close" : "Cancel"}</button>
                 {!importResult && (
-                  <button
-                    onClick={() => handleRndImport(showImport)}
-                    disabled={importing || importRows.length === 0}
-                    className="flex-1 bg-blue-600 text-white rounded-xl py-2.5 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-                  >
+                  <button onClick={() => handleRndImport(showImport)} disabled={importing || importRows.length === 0} className="flex-1 bg-blue-600 text-white rounded-xl py-2.5 text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
                     {importing ? "Importing..." : `Import ${importRows.length} rows`}
                   </button>
                 )}
@@ -520,6 +529,7 @@ export default function RndPage() {
         </div>
       )}
 
+      {/* ── Global import modal ── */}
       {showGlobalImport && (
         <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-3 sm:p-6">
           <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
@@ -530,71 +540,21 @@ export default function RndPage() {
             <div className="p-5 space-y-4">
               <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-700 space-y-1">
                 <p className="font-medium">Columns: <code className="bg-blue-100 px-1 rounded">projectName, date, description, subCategory, amount</code></p>
-                <p>If <strong>projectName</strong> matches an existing project it is used; otherwise a new project is created automatically.</p>
                 <a href={RND_GLOBAL_TEMPLATE} download="rnd_global_import_template.csv" className="flex items-center gap-1 text-blue-600 hover:text-blue-700 mt-1.5 font-medium">
                   <Download size={12} /> Download template CSV
                 </a>
               </div>
-
-              <div>
-                <label className="text-xs text-gray-500 mb-1.5 block font-medium">Select CSV / Excel file</label>
-                <input
-                  type="file"
-                  accept=".csv,.xlsx,.xls"
-                  onChange={handleRndFileSelect}
-                  className="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                />
-              </div>
-
-              {importRows.length > 0 && !importResult && (
-                <div>
-                  <p className="text-xs font-medium text-gray-600 mb-2">{importRows.length} rows ready to import</p>
-                  <div className="overflow-x-auto rounded-xl border border-gray-200 max-h-48">
-                    <table className="w-full text-xs min-w-[500px]">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Project</th>
-                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Date</th>
-                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Description</th>
-                          <th className="text-left px-3 py-2 text-gray-500 font-medium">Category</th>
-                          <th className="text-right px-3 py-2 text-gray-500 font-medium">Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {importRows.slice(0, 20).map((row, i) => (
-                          <tr key={i}>
-                            <td className="px-3 py-2 text-gray-700 max-w-[120px] truncate">{row.projectName || <span className="text-red-400">missing</span>}</td>
-                            <td className="px-3 py-2 text-gray-500">{row.date}</td>
-                            <td className="px-3 py-2 text-gray-800 max-w-[140px] truncate">{row.description}</td>
-                            <td className="px-3 py-2 text-gray-500">{row.subCategory}</td>
-                            <td className="px-3 py-2 text-right text-red-500 font-medium">{row.amount.toLocaleString("id-ID")}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {importRows.length > 20 && <p className="text-xs text-gray-400 mt-1">Showing first 20 of {importRows.length} rows</p>}
-                </div>
-              )}
-
+              <input type="file" accept=".csv,.xlsx,.xls" onChange={handleRndFileSelect} className="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
               {importResult && (
-                <div className="bg-green-50 rounded-xl px-4 py-3 text-sm text-green-800 space-y-0.5">
+                <div className="bg-green-50 rounded-xl px-4 py-3 text-sm text-green-800">
                   <p className="font-semibold">Import complete</p>
                   <p>{importResult.imported} imported · {importResult.skipped} skipped · {importResult.failed} failed</p>
-                  {importResult.failed > 0 && <p className="text-xs text-green-600">Failed rows are missing a projectName or had no description/amount.</p>}
                 </div>
               )}
-
               <div className="flex gap-2">
-                <button onClick={() => setShowGlobalImport(false)} className="flex-1 border border-gray-300 text-gray-600 rounded-xl py-2.5 text-sm font-medium">
-                  {importResult ? "Close" : "Cancel"}
-                </button>
+                <button onClick={() => setShowGlobalImport(false)} className="flex-1 border border-gray-300 text-gray-600 rounded-xl py-2.5 text-sm font-medium">{importResult ? "Close" : "Cancel"}</button>
                 {!importResult && (
-                  <button
-                    onClick={() => handleRndImport(null)}
-                    disabled={importing || importRows.length === 0}
-                    className="flex-1 bg-blue-600 text-white rounded-xl py-2.5 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-                  >
+                  <button onClick={() => handleRndImport(null)} disabled={importing || importRows.length === 0} className="flex-1 bg-blue-600 text-white rounded-xl py-2.5 text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
                     {importing ? "Importing..." : `Import ${importRows.length} rows`}
                   </button>
                 )}
@@ -604,11 +564,15 @@ export default function RndPage() {
         </div>
       )}
 
+      {/* ── New Project modal ── */}
       {showNewProject && (
         <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-3 sm:p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl p-5 sm:p-6 space-y-4">
-            <h3 className="font-semibold text-gray-900">New R&D Project</h3>
-            <form onSubmit={createProject} className="space-y-3">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl p-5 sm:p-6 space-y-4 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-gray-900">New R&D Project</h3>
+              <button onClick={() => { setShowNewProject(false); setFormMaterials([]); }}><X size={18} /></button>
+            </div>
+            <form onSubmit={createProject} className="space-y-4">
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Project Name</label>
                 <input
@@ -637,16 +601,86 @@ export default function RndPage() {
                   className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                 />
               </div>
+
+              {/* Materials section */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Materials Used</label>
+                  <button
+                    type="button"
+                    onClick={addFormMaterial}
+                    disabled={supplyItems.length === 0}
+                    className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-0.5 disabled:opacity-40"
+                  >
+                    <Plus size={11} /> Add material
+                  </button>
+                </div>
+
+                {supplyItems.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">No supply items configured — add them in Inventory first.</p>
+                ) : formMaterials.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">No materials selected (optional)</p>
+                ) : (
+                  <div className="space-y-2">
+                    {formMaterials.map((mat, idx) => {
+                      const selected = supplyItems.find((s) => s.id === mat.supplyItemId);
+                      const cost = selected && mat.quantityUsed
+                        ? parseFloat(mat.quantityUsed) * parseFloat(selected.pricePerUnit)
+                        : 0;
+                      return (
+                        <div key={idx} className="flex gap-2 items-center bg-gray-50 rounded-lg p-2">
+                          <select
+                            value={mat.supplyItemId}
+                            onChange={(e) => updateFormMaterial(idx, "supplyItemId", e.target.value)}
+                            className="flex-1 border border-gray-200 rounded px-2 py-1.5 text-xs bg-white focus:outline-none"
+                          >
+                            <option value="">Select item...</option>
+                            {supplyItems.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.name} ({parseFloat(s.stock).toLocaleString("id-ID")} {s.unit} left)
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={0}
+                            step="any"
+                            placeholder="Qty"
+                            value={mat.quantityUsed}
+                            onChange={(e) => updateFormMaterial(idx, "quantityUsed", e.target.value)}
+                            className="w-20 border border-gray-200 rounded px-2 py-1.5 text-xs focus:outline-none"
+                          />
+                          {selected && <span className="text-xs text-gray-400 shrink-0">{selected.unit}</span>}
+                          {cost > 0 && <span className="text-xs text-orange-600 font-medium shrink-0">{formatIDR(cost)}</span>}
+                          <button type="button" onClick={() => removeFormMaterial(idx)} className="p-1 text-red-400 hover:bg-red-100 rounded">
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                    {formMaterials.some((m) => m.supplyItemId && parseFloat(m.quantityUsed) > 0) && (
+                      <p className="text-xs text-orange-700 font-medium text-right">
+                        Total: {formatIDR(formMaterials.reduce((s, m) => {
+                          const item = supplyItems.find((si) => si.id === m.supplyItemId);
+                          return s + (item ? parseFloat(m.quantityUsed || "0") * parseFloat(item.pricePerUnit) : 0);
+                        }, 0))}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <div className="flex gap-2 pt-1">
                 <button
                   type="button"
-                  onClick={() => setShowNewProject(false)}
+                  onClick={() => { setShowNewProject(false); setFormMaterials([]); }}
                   className="flex-1 border border-gray-300 text-gray-700 rounded-lg py-3 text-sm font-medium min-h-[44px]"
                 >
                   Cancel
                 </button>
                 <button type="submit" className="flex-1 bg-blue-600 text-white rounded-lg py-3 text-sm font-medium hover:bg-blue-700 min-h-[44px]">
-                  Create
+                  Create Project
                 </button>
               </div>
             </form>
