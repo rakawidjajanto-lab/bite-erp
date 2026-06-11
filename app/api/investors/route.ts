@@ -43,3 +43,41 @@ export async function GET(req: Request) {
 
   return NextResponse.json(result);
 }
+
+export async function POST(req: Request) {
+  const { investorName, amount, description, date } = await req.json() as {
+    investorName: string;
+    amount: number;
+    description: string;
+    date: string;
+  };
+
+  if (!investorName || !amount || !description || !date) {
+    return NextResponse.json({ error: "All fields required" }, { status: 400 });
+  }
+
+  const tx = await prisma.transaction.create({
+    data: {
+      date: new Date(date),
+      description,
+      category: "INVESTMENT",
+      amountIn: amount,
+      investorName,
+      source: "MANUAL",
+    },
+    select: {
+      id: true,
+      date: true,
+      description: true,
+      amountIn: true,
+      amountOut: true,
+      investorName: true,
+      notes: true,
+    },
+  });
+
+  return NextResponse.json(
+    { ...tx, resolvedName: detectInvestor(description, investorName) },
+    { status: 201 }
+  );
+}

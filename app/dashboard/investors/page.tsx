@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { formatIDR } from "@/lib/formatters/currency";
 import { MonthYearPicker, monthBounds } from "@/components/filters/MonthYearPicker";
-import { Users } from "lucide-react";
+import { Users, Plus, X } from "lucide-react";
 
 type InvestorTx = {
   id: string;
@@ -22,6 +22,8 @@ type InvestorSummary = {
   pct: number;
 };
 
+type EditState = { id: string; field: "amount" | "description"; value: string } | null;
+
 const INVESTOR_COLORS: Record<string, { bar: string; text: string; card: string }> = {
   Raka:    { bar: "bg-blue-500",   text: "text-blue-700",   card: "border-blue-100 bg-blue-50"    },
   Billa:   { bar: "bg-violet-500", text: "text-violet-700", card: "border-violet-100 bg-violet-50" },
@@ -33,10 +35,25 @@ function colorFor(name: string) {
   return INVESTOR_COLORS[name] ?? FALLBACK_COLORS;
 }
 
+function today() {
+  return new Date().toISOString().split("T")[0];
+}
+
 export default function InvestorsPage() {
   const [transactions, setTransactions] = useState<InvestorTx[]>([]);
   const [year, setYear] = useState<number | null>(null);
   const [month, setMonth] = useState<number | null>(null);
+
+  // Add modal
+  const [showAdd, setShowAdd] = useState(false);
+  const [addName, setAddName] = useState<"Raka" | "Billa">("Raka");
+  const [addAmount, setAddAmount] = useState("");
+  const [addDesc, setAddDesc] = useState("");
+  const [addDate, setAddDate] = useState(today());
+  const [submitting, setSubmitting] = useState(false);
+
+  // Inline editing
+  const [editState, setEditState] = useState<EditState>(null);
 
   const fetchInvestors = useCallback(() => {
     const { from, to } = monthBounds(year, month);
@@ -49,6 +66,38 @@ export default function InvestorsPage() {
 
   useEffect(() => { fetchInvestors(); }, [fetchInvestors]);
 
+  async function handleAdd() {
+    if (!addAmount || !addDesc) return;
+    setSubmitting(true);
+    await fetch("/api/investors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ investorName: addName, amount: parseFloat(addAmount), description: addDesc, date: addDate }),
+    });
+    setSubmitting(false);
+    setShowAdd(false);
+    setAddAmount("");
+    setAddDesc("");
+    setAddDate(today());
+    fetchInvestors();
+  }
+
+  async function saveEdit() {
+    if (!editState) return;
+    const { id, field, value } = editState;
+    setEditState(null);
+    const body = field === "amount"
+      ? { amountIn: parseFloat(value) || 0 }
+      : { description: value.trim() };
+    if (field === "description" && !value.trim()) return;
+    await fetch(`/api/transactions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    fetchInvestors();
+  }
+
   const totalPool = transactions.reduce((s, tx) => s + parseFloat(tx.amountIn ?? "0"), 0);
 
   const summaryMap: Record<string, number> = {};
@@ -58,11 +107,7 @@ export default function InvestorsPage() {
   }
 
   const investors: InvestorSummary[] = Object.entries(summaryMap)
-    .map(([name, totalIn]) => ({
-      name,
-      totalIn,
-      pct: totalPool > 0 ? (totalIn / totalPool) * 100 : 0,
-    }))
+    .map(([name, totalIn]) => ({ name, totalIn, pct: totalPool > 0 ? (totalIn / totalPool) * 100 : 0 }))
     .sort((a, b) => b.totalIn - a.totalIn);
 
   function formatDate(d: string) {
@@ -79,7 +124,15 @@ export default function InvestorsPage() {
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Investment Overview</h2>
             <p className="text-sm text-gray-500">Capital contributions from each investor</p>
           </div>
-          <MonthYearPicker year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m); }} />
+          <div className="flex items-center gap-2">
+            <MonthYearPicker year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m); }} />
+            <button
+              onClick={() => setShowAdd(true)}
+              className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition"
+            >
+              <Plus size={14} /> Add Investment
+            </button>
+          </div>
         </div>
 
         {transactions.length === 0 ? (
@@ -157,10 +210,58 @@ export default function InvestorsPage() {
                       <tr key={tx.id} className="hover:bg-gray-50">
                         <td className="px-4 sm:px-5 py-3 text-gray-500 whitespace-nowrap">{formatDate(tx.date)}</td>
                         <td className="px-4 sm:px-5 py-3 font-medium text-gray-900">{tx.resolvedName}</td>
-                        <td className="px-4 sm:px-5 py-3 text-right font-semibold text-green-700 whitespace-nowrap">
-                          {formatIDR(parseFloat(tx.amountIn ?? "0"))}
+
+                        {/* Amount — inline editable */}
+                        <td className="px-4 sm:px-5 py-3 text-right whitespace-nowrap">
+                          {editState?.id === tx.id && editState.field === "amount" ? (
+                            <input
+                              autoFocus
+                              type="number"
+                              value={editState.value}
+                              onChange={(e) => setEditState({ ...editState, value: e.target.value })}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") saveEdit();
+                                if (e.key === "Escape") setEditState(null);
+                              }}
+                              onBlur={saveEdit}
+                              className="w-32 text-right border border-blue-400 rounded px-2 py-0.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            />
+                          ) : (
+                            <span
+                              title="Click to edit"
+                              onClick={() => setEditState({ id: tx.id, field: "amount", value: String(parseFloat(tx.amountIn ?? "0")) })}
+                              className="font-semibold text-green-700 cursor-pointer hover:underline decoration-dashed"
+                            >
+                              {formatIDR(parseFloat(tx.amountIn ?? "0"))}
+                            </span>
+                          )}
                         </td>
-                        <td className="px-4 sm:px-5 py-3 text-gray-600 max-w-[200px] truncate">{tx.description}</td>
+
+                        {/* Description — inline editable */}
+                        <td className="px-4 sm:px-5 py-3 text-gray-600 max-w-[200px]">
+                          {editState?.id === tx.id && editState.field === "description" ? (
+                            <input
+                              autoFocus
+                              type="text"
+                              value={editState.value}
+                              onChange={(e) => setEditState({ ...editState, value: e.target.value })}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") saveEdit();
+                                if (e.key === "Escape") setEditState(null);
+                              }}
+                              onBlur={saveEdit}
+                              className="w-full border border-blue-400 rounded px-2 py-0.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            />
+                          ) : (
+                            <span
+                              title="Click to edit"
+                              onClick={() => setEditState({ id: tx.id, field: "description", value: tx.description })}
+                              className="cursor-pointer hover:underline decoration-dashed truncate block"
+                            >
+                              {tx.description}
+                            </span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -170,6 +271,89 @@ export default function InvestorsPage() {
           </>
         )}
       </div>
+
+      {/* Add Investment modal */}
+      {showAdd && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-gray-800 text-lg">Add Investment</h2>
+              <button onClick={() => setShowAdd(false)}><X size={18} /></button>
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Investor</label>
+              <div className="flex gap-2">
+                {(["Raka", "Billa"] as const).map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setAddName(n)}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium border transition ${
+                      addName === n
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Amount (IDR)</label>
+              <input
+                type="number"
+                inputMode="numeric"
+                value={addAmount}
+                onChange={(e) => setAddAmount(e.target.value)}
+                placeholder="0"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Description</label>
+              <input
+                type="text"
+                value={addDesc}
+                onChange={(e) => setAddDesc(e.target.value)}
+                placeholder="e.g. Initial capital injection"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Date</label>
+              <input
+                type="date"
+                value={addDate}
+                onChange={(e) => setAddDate(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowAdd(false)}
+                className="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!addAmount || !addDesc || submitting}
+                onClick={handleAdd}
+                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-60"
+              >
+                {submitting ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

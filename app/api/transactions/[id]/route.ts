@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { description, category } = await req.json();
+  const { description, category, amountIn } = await req.json();
 
   const data: Record<string, unknown> = {};
   if (description !== undefined) {
@@ -13,6 +13,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     data.description = description.trim();
   }
   if (category !== undefined) data.category = category;
+  if (amountIn !== undefined) {
+    const n = Number(amountIn);
+    if (isNaN(n) || n < 0) {
+      return NextResponse.json({ error: "invalid amountIn" }, { status: 400 });
+    }
+    data.amountIn = n;
+  }
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: "nothing to update" }, { status: 400 });
   }
@@ -20,7 +27,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const tx = await prisma.transaction.update({
     where: { id },
     data,
-    select: { id: true, description: true, category: true },
+    select: { id: true, description: true, category: true, amountIn: true },
   });
   return NextResponse.json(tx);
 }
