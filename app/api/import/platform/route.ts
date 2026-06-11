@@ -136,7 +136,7 @@ export async function POST(req: Request) {
 }
 
 async function createPlatformFeeTx(
-  order: { feeReferenceId?: string; platformFee: number; settlementDate: string | null; orderDate: string; description?: string; externalOrderId: string },
+  order: { feeReferenceId?: string; feeDescription?: string; platformFee: number; settlementDate: string | null; orderDate: string; description?: string; externalOrderId: string },
   txSource: string
 ) {
   if (!order.feeReferenceId || order.platformFee <= 0) return;
@@ -147,7 +147,7 @@ async function createPlatformFeeTx(
   });
   if (existing) return;
 
-  const feeLabel = order.description?.replace("Income Settlement", "Platform Fee") ?? `Platform Fee ${order.externalOrderId}`;
+  const feeLabel = order.feeDescription ?? order.description?.replace("Income Settlement", "Platform Fee") ?? `Platform Fee ${order.externalOrderId}`;
   const feeDate = new Date(order.orderDate);
 
   await prisma.transaction.create({

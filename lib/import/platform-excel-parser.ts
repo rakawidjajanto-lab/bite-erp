@@ -17,6 +17,7 @@ export type NormalizedPlatformOrder = {
   customerName?: string;
   description?: string;
   feeReferenceId?: string;
+  feeDescription?: string;
   items: NormalizedPlatformItem[];
   rawData: Record<string, unknown>;
 };
@@ -165,6 +166,43 @@ function parseTokopediaCompleted(sheet: XLSX.WorkSheet): NormalizedPlatformOrder
   return orders;
 }
 
+function parseTokopediaIncome(sheet: XLSX.WorkSheet): NormalizedPlatformOrder[] {
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+    range: 0,
+    defval: "",
+  });
+
+  const orders: NormalizedPlatformOrder[] = [];
+
+  for (const row of rows) {
+    if (String(row["Transaction type"] ?? "").trim() !== "Order") continue;
+
+    const orderId = String(row["Order/Adjustment ID"] ?? "").trim();
+    if (!orderId) continue;
+
+    const grossAmount = parseNum(row["Total Revenue"]);
+    const platformFee = Math.abs(parseNum(row["Total Fees"]));
+    const netAmount = parseNum(row["Total settlement amount"]);
+    const productName = String(row["Details of items sold"] ?? "").trim();
+
+    orders.push({
+      externalOrderId: orderId,
+      orderDate: parseExcelDate(row["Order created time"]) ?? new Date().toISOString().split("T")[0],
+      settlementDate: parseExcelDate(row["Order settled time"]),
+      settlementStatus: "SETTLED",
+      grossAmount,
+      platformFee,
+      netAmount,
+      feeReferenceId: `TOKOPEDIA-FEE-${orderId}`,
+      feeDescription: `Tokopedia Platform Fee - ${orderId}`,
+      items: productName ? [{ productName, quantity: 1, unitPrice: grossAmount }] : [],
+      rawData: row,
+    });
+  }
+
+  return orders;
+}
+
 function parseShopee(sheet: XLSX.WorkSheet): NormalizedPlatformOrder[] {
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     range: 0,
@@ -270,17 +308,23 @@ export function parsePlatformExcel(buffer: ArrayBuffer): {
   }) as unknown[][];
 
   const row0Col0 = String(allRows[0]?.[0] ?? "").trim();
+  const row0Col1 = String(allRows[0]?.[1] ?? "").trim();
+  const row0Col5 = String(allRows[0]?.[5] ?? "").trim();
   const row1Col0 = String(allRows[1]?.[0] ?? "").trim();
   const row0Headers = allRows[0] ?? [];
   const row4Headers = allRows[4] ?? [];
 
   const isShopeeSettlement = row0Col0 === "Laporan Penghasilan";
+  const isTokopediaIncome = row0Col0 === "Order/Adjustment ID" && row0Col1 === "Transaction type" && row0Col5 === "Total settlement amount";
   const isTokopediaCompleted = row0Col0 === "Order ID" && row1Col0 === "Platform unique order ID.";
   const hasShopeeHeader = row0Headers.some((h) => String(h).includes("No. Pesanan"));
   const hasTokopediaHeader = row4Headers.some((h) => String(h).includes("Order/Adjustment ID"));
 
   if (isShopeeSettlement) {
     return { platform: "shopee", orders: parseShopeeSettlement(allRows) };
+  }
+  if (isTokopediaIncome) {
+    return { platform: "tokopedia", orders: parseTokopediaIncome(sheet) };
   }
   if (isTokopediaCompleted) {
     return { platform: "tokopedia", orders: parseTokopediaCompleted(sheet) };
