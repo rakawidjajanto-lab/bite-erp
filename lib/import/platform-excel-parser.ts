@@ -266,33 +266,39 @@ function parseShopee(sheet: XLSX.WorkSheet): NormalizedPlatformOrder[] {
   return orders;
 }
 
-function parseShopeeSettlement(allRows: unknown[][]): NormalizedPlatformOrder[] {
-  const startDateRaw = allRows[6]?.[1];
-  const endDateRaw = allRows[7]?.[1];
-  const grossAmount = Math.abs(parseNum(allRows[10]?.[3]));
-  const platformFee = Math.abs(parseNum(allRows[33]?.[3]));
-  const netAmount = Math.abs(parseNum(allRows[47]?.[3]));
+function parseShopeeIncome(sheet: XLSX.WorkSheet): NormalizedPlatformOrder[] {
+  // Headers at row 5, data from row 6
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+    range: 5,
+    defval: "",
+  });
 
-  const startDate = parseExcelDate(startDateRaw) ?? new Date().toISOString().split("T")[0];
-  const endDate = parseExcelDate(endDateRaw) ?? startDate;
+  const orders: NormalizedPlatformOrder[] = [];
 
-  const externalOrderId = `SETTLEMENT-${startDate}-to-${endDate}`;
+  for (const row of rows) {
+    const orderId = String(row["No. Pesanan"] ?? "").trim();
+    if (!orderId) continue;
 
-  return [
-    {
-      externalOrderId,
-      orderDate: startDate,
-      settlementDate: endDate,
+    const grossAmount = parseNum(row["Harga Asli Produk"]);
+    const platformFee = Math.abs(parseNum(row["Biaya Layanan"]));
+    const netAmount = parseNum(row["Total Penghasilan"]);
+
+    orders.push({
+      externalOrderId: orderId,
+      orderDate: parseExcelDate(row["Waktu Pesanan Dibuat"]) ?? new Date().toISOString().split("T")[0],
+      settlementDate: parseExcelDate(row["Tanggal Dana Dilepaskan"]),
       settlementStatus: "SETTLED",
       grossAmount,
       platformFee,
       netAmount,
-      description: `Shopee Income Settlement ${startDate} – ${endDate}`,
-      feeReferenceId: `PLATFORM-FEE-${startDate}-to-${endDate}`,
+      feeReferenceId: `SHOPEE-FEE-${orderId}`,
+      feeDescription: `Shopee Platform Fee - ${orderId}`,
       items: [],
-      rawData: { startDate, endDate, grossAmount, platformFee, netAmount },
-    },
-  ];
+      rawData: row,
+    });
+  }
+
+  return orders;
 }
 
 export function mergeTokopediaFiles(
@@ -390,14 +396,14 @@ export function parsePlatformExcel(buffer: ArrayBuffer): {
   const row0Headers = allRows[0] ?? [];
   const row4Headers = allRows[4] ?? [];
 
-  const isShopeeSettlement = row0Col0 === "Laporan Penghasilan";
+  const isShopeeIncome = row0Col0 === "Username (Penjual)" && String(allRows[5]?.[1] ?? "").trim() === "No. Pesanan";
   const isTokopediaIncome = row0Col0 === "Order/Adjustment ID" && row0Col1 === "Transaction type" && row0Col5 === "Total settlement amount";
   const isTokopediaCompleted = row0Col0 === "Order ID" && row1Col0 === "Platform unique order ID.";
   const hasShopeeHeader = row0Headers.some((h) => String(h).includes("No. Pesanan"));
   const hasTokopediaHeader = row4Headers.some((h) => String(h).includes("Order/Adjustment ID"));
 
-  if (isShopeeSettlement) {
-    return { platform: "shopee", orders: parseShopeeSettlement(allRows) };
+  if (isShopeeIncome) {
+    return { platform: "shopee", orders: parseShopeeIncome(sheet) };
   }
   if (isTokopediaIncome) {
     return { platform: "tokopedia", orders: parseTokopediaIncome(sheet) };
@@ -413,6 +419,6 @@ export function parsePlatformExcel(buffer: ArrayBuffer): {
   }
 
   throw new Error(
-    "Unrecognized file format. Expected Tokopedia income report, Tokopedia completed orders, Shopee order export, or Shopee income settlement."
+    "Unrecognized file format. Expected Tokopedia income report, Tokopedia completed orders, Shopee order export, or Shopee income per order."
   );
 }
