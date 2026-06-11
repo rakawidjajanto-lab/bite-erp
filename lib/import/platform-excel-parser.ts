@@ -53,6 +53,11 @@ function parseExcelDate(val: unknown): string | null {
   return parsed.toISOString().split("T")[0];
 }
 
+function findCell(rows: unknown[][], labelCol0: string): unknown {
+  const row = rows.find((r) => String((r as unknown[])[0] ?? "").trim() === labelCol0);
+  return row ? (row as unknown[])[1] : undefined;
+}
+
 function groupBy<T>(rows: T[], key: (r: T) => string): Map<string, T[]> {
   const map = new Map<string, T[]>();
   for (const row of rows) {
@@ -266,6 +271,32 @@ function parseShopee(sheet: XLSX.WorkSheet): NormalizedPlatformOrder[] {
   return orders;
 }
 
+function parseShopeeSettlement(rows: unknown[][]): NormalizedPlatformOrder[] {
+  const startDate = parseExcelDate(findCell(rows, "Dari")) ?? new Date().toISOString().split("T")[0];
+  const endDate = parseExcelDate(findCell(rows, "ke")) ?? startDate;
+  const grossAmount = Math.abs(parseNum(findCell(rows, "1. Total Pendapatan")));
+  const platformFee = Math.abs(parseNum(findCell(rows, "Biaya Layanan")));
+  const netAmount = Math.abs(parseNum(findCell(rows, "3. Total yang Dilepas")));
+
+  const externalOrderId = `SETTLEMENT-${startDate}-to-${endDate}`;
+
+  return [
+    {
+      externalOrderId,
+      orderDate: startDate,
+      settlementDate: endDate,
+      settlementStatus: "SETTLED",
+      grossAmount,
+      platformFee,
+      netAmount,
+      description: `Shopee Income Settlement ${startDate} – ${endDate}`,
+      feeReferenceId: `PLATFORM-FEE-${startDate}-to-${endDate}`,
+      items: [],
+      rawData: { startDate, endDate, grossAmount, platformFee, netAmount },
+    },
+  ];
+}
+
 function parseShopeeIncome(sheet: XLSX.WorkSheet): NormalizedPlatformOrder[] {
   // Headers at row 5, data from row 6
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
@@ -382,6 +413,19 @@ export function parsePlatformExcel(buffer: ArrayBuffer): {
   orders: NormalizedPlatformOrder[];
 } {
   const workbook = XLSX.read(new Uint8Array(buffer), { type: "array" });
+
+  // Shopee Settlement: lives in the "Summary" sheet, identified by a "Laporan Penghasilan" label row
+  const summarySheet = workbook.Sheets["Summary"];
+  if (summarySheet) {
+    const summaryRows = XLSX.utils.sheet_to_json<unknown[]>(summarySheet, {
+      header: 1,
+      defval: "",
+    }) as unknown[][];
+    if (summaryRows.some((r) => String((r as unknown[])[0] ?? "").trim() === "Laporan Penghasilan")) {
+      return { platform: "shopee", orders: parseShopeeSettlement(summaryRows) };
+    }
+  }
+
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
   const allRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
@@ -395,6 +439,11 @@ export function parsePlatformExcel(buffer: ArrayBuffer): {
   const row1Col0 = String(allRows[1]?.[0] ?? "").trim();
   const row0Headers = allRows[0] ?? [];
   const row4Headers = allRows[4] ?? [];
+
+  console.log("[platform-detect] row0:", JSON.stringify(allRows[0]?.slice(0, 6)));
+  console.log("[platform-detect] row5:", JSON.stringify(allRows[5]?.slice(0, 4)));
+  console.log("[platform-detect] row0col0 bytes:", [...String(allRows[0]?.[0] ?? "")].map((c) => c.charCodeAt(0)));
+  console.log("[platform-detect] row5col1 bytes:", [...String(allRows[5]?.[1] ?? "")].map((c) => c.charCodeAt(0)));
 
   const isShopeeIncome = row0Col0 === "Username (Penjual)" && String(allRows[5]?.[1] ?? "").trim() === "No. Pesanan";
   const isTokopediaIncome = row0Col0 === "Order/Adjustment ID" && row0Col1 === "Transaction type" && row0Col5 === "Total settlement amount";
