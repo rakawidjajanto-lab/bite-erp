@@ -64,7 +64,7 @@ export async function POST(req: Request) {
           if (existing.status === "PENDING" && order.settlementStatus === "SETTLED") {
             const tx = await prisma.transaction.create({
               data: {
-                date: new Date(order.orderDate),
+                date: new Date(order.settlementDate ?? order.orderDate),
                 description: order.description ?? `${platformName} order #${order.externalOrderId}`,
                 category: "SALES",
                 amountIn: order.netAmount,
@@ -95,7 +95,7 @@ export async function POST(req: Request) {
         if (order.settlementStatus === "SETTLED") {
           const tx = await prisma.transaction.create({
             data: {
-              date: new Date(order.orderDate),
+              date: new Date(order.settlementDate ?? order.orderDate),
               description: order.description ?? `${platformName} order #${order.externalOrderId}`,
               category: "SALES",
               amountIn: order.netAmount,
