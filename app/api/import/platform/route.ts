@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { parsePlatformExcel } from "@/lib/import/platform-excel-parser";
+import { parsePlatformExcel, mergeTokopediaFiles } from "@/lib/import/platform-excel-parser";
+import type { NormalizedPlatformOrder } from "@/lib/import/platform-excel-parser";
 
 type ProductWithFlavors = {
   id: string;
@@ -17,13 +18,24 @@ export async function POST(req: Request) {
 
   try {
     const formData = await req.formData();
-    const file = formData.get("file") as File | null;
-    if (!file) {
+    const completedFile = formData.get("completedFile") as File | null;
+    const incomeFile = formData.get("incomeFile") as File | null;
+    const singleFile = formData.get("file") as File | null;
+
+    let platform: "tokopedia" | "shopee";
+    let orders: NormalizedPlatformOrder[];
+
+    if (completedFile && incomeFile) {
+      platform = "tokopedia";
+      const [cb, ib] = await Promise.all([completedFile.arrayBuffer(), incomeFile.arrayBuffer()]);
+      orders = mergeTokopediaFiles(cb, ib);
+    } else if (singleFile) {
+      const buffer = await singleFile.arrayBuffer();
+      ({ platform, orders } = parsePlatformExcel(buffer));
+    } else {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    const buffer = await file.arrayBuffer();
-    const { platform, orders } = parsePlatformExcel(buffer);
     platformName = platform === "tokopedia" ? "Tokopedia" : "Shopee";
     const txSource = platform === "tokopedia" ? "TOKOPEDIA" : "SHOPEE";
 

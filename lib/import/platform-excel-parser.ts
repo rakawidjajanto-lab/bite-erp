@@ -295,6 +295,82 @@ function parseShopeeSettlement(allRows: unknown[][]): NormalizedPlatformOrder[] 
   ];
 }
 
+export function mergeTokopediaFiles(
+  completedBuffer: ArrayBuffer,
+  incomeBuffer: ArrayBuffer
+): NormalizedPlatformOrder[] {
+  // Completed Orders: headers at row 0, descriptions at row 1, data from row 2
+  const wbC = XLSX.read(new Uint8Array(completedBuffer), { type: "array" });
+  const sheetC = wbC.Sheets[wbC.SheetNames[0]];
+  const completedRows = (
+    XLSX.utils.sheet_to_json<unknown[]>(sheetC, { header: 1, defval: "" }) as unknown[][]
+  ).slice(2);
+
+  type CompletedItem = { productName: string; qty: number; unitPrice: number; orderAmount: number; createdTime: unknown };
+  const itemsByOrder = new Map<string, CompletedItem[]>();
+
+  for (const row of completedRows) {
+    const r = row as unknown[];
+    const orderId = String(r[0] ?? "").trim();
+    if (!orderId) continue;
+    const arr = itemsByOrder.get(orderId) ?? [];
+    arr.push({
+      productName: String(r[7] ?? "").trim(),
+      qty: parseNum(r[9]) || 1,
+      unitPrice: parseNum(r[11]),
+      orderAmount: parseNum(r[28]),
+      createdTime: r[29],
+    });
+    itemsByOrder.set(orderId, arr);
+  }
+
+  // Income Settlement: headers at row 0, data from row 1
+  const wbI = XLSX.read(new Uint8Array(incomeBuffer), { type: "array" });
+  const sheetI = wbI.Sheets[wbI.SheetNames[0]];
+  const incomeRows = (
+    XLSX.utils.sheet_to_json<unknown[]>(sheetI, { header: 1, defval: "" }) as unknown[][]
+  ).slice(1);
+
+  const orders: NormalizedPlatformOrder[] = [];
+
+  for (const row of incomeRows) {
+    const r = row as unknown[];
+    if (String(r[1] ?? "").trim() !== "Order") continue;
+
+    const orderId = String(r[0] ?? "").trim();
+    if (!orderId) continue;
+
+    const netAmount = parseNum(r[5]);
+    const platformFee = Math.abs(parseNum(r[14]));
+    const settlementDate = parseExcelDate(r[3]);
+
+    const completedItems = itemsByOrder.get(orderId) ?? [];
+    const grossAmount = completedItems[0]?.orderAmount ?? netAmount;
+    const orderDate =
+      parseExcelDate(completedItems[0]?.createdTime) ?? new Date().toISOString().split("T")[0];
+
+    orders.push({
+      externalOrderId: orderId,
+      orderDate,
+      settlementDate,
+      settlementStatus: "SETTLED",
+      grossAmount,
+      platformFee,
+      netAmount,
+      feeReferenceId: `TOKOPEDIA-FEE-${orderId}`,
+      feeDescription: `Tokopedia Platform Fee - ${orderId}`,
+      items: completedItems.map((it) => ({
+        productName: it.productName,
+        quantity: it.qty,
+        unitPrice: it.unitPrice,
+      })),
+      rawData: { orderId, netAmount, platformFee, settlementDate },
+    });
+  }
+
+  return orders;
+}
+
 export function parsePlatformExcel(buffer: ArrayBuffer): {
   platform: "tokopedia" | "shopee";
   orders: NormalizedPlatformOrder[];
