@@ -277,39 +277,41 @@ function parseShopee(sheet: XLSX.WorkSheet): NormalizedPlatformOrder[] {
   return orders;
 }
 
-function parseShopeeSettlement(rows: unknown[][]): NormalizedPlatformOrder[] {
-  const startDate = parseExcelDate(findCell(rows, "Dari")) ?? new Date().toISOString().split("T")[0];
-  const endDate = parseExcelDate(findCell(rows, "ke")) ?? startDate;
+function parseShopeeSettlement(workbook: XLSX.WorkBook): NormalizedPlatformOrder[] {
+  const incomeSheet = workbook.Sheets["Income"];
+  if (!incomeSheet) return [];
 
-  const grossRaw = findCell(rows, "1. Total Pendapatan");
-  const feeRaw = findCell(rows, "Biaya Layanan");
-  const netRaw = findCell(rows, "3. Total yang Dilepas");
+  // Header at row index 5 (row 6 in Excel), data from row index 6
+  const allRows = XLSX.utils.sheet_to_json<unknown[]>(incomeSheet, {
+    header: 1,
+    defval: "",
+  }) as unknown[][];
 
-  const grossAmount = Math.abs(Number(grossRaw) || 0);
-  const platformFee = Math.abs(Number(feeRaw) || 0);
-  const netAmount = Math.abs(Number(netRaw) || 0);
+  const orders: NormalizedPlatformOrder[] = [];
 
-  console.log("[shopee-settlement] grossRevenue raw:", grossRaw, "→", grossAmount);
-  console.log("[shopee-settlement] platformFee raw:", feeRaw, "→", platformFee);
-  console.log("[shopee-settlement] netAmount raw:", netRaw, "→", netAmount);
+  for (const row of allRows.slice(6)) {
+    const r = row as unknown[];
+    // Col 0 is a sequential row number in data rows; skip summary/total rows where it is absent
+    if (typeof r[0] !== "number") continue;
 
-  const externalOrderId = `SETTLEMENT-${startDate}-to-${endDate}`;
+    const orderId = String(r[1] ?? "").trim();   // Col 1: No. Pesanan
+    if (!orderId) continue;
 
-  return [
-    {
-      externalOrderId,
-      orderDate: startDate,
-      settlementDate: endDate,
+    orders.push({
+      externalOrderId: orderId,
+      orderDate: parseExcelDate(r[4]) ?? new Date().toISOString().split("T")[0],  // Col 4: Waktu Pesanan Dibuat
+      settlementDate: parseExcelDate(r[6]),                                        // Col 6: Tanggal Dana Dilepaskan
       settlementStatus: "SETTLED",
-      grossAmount,
-      platformFee,
-      netAmount,
-      description: `Shopee Income Settlement ${startDate} – ${endDate}`,
-      feeReferenceId: `PLATFORM-FEE-${startDate}-to-${endDate}`,
+      grossAmount: parseNum(r[7]),                  // Col 7:  Harga Asli Produk
+      platformFee: Math.abs(parseNum(r[24])),       // Col 24: Biaya Layanan (negative)
+      netAmount: parseNum(r[32]),                   // Col 32: Total Penghasilan → amountIn
+      customerName: String(r[3] ?? "").trim() || undefined,  // Col 3: Username (Pembeli)
       items: [],
-      rawData: { startDate, endDate, grossAmount, platformFee, netAmount },
-    },
-  ];
+      rawData: { orderId },
+    });
+  }
+
+  return orders;
 }
 
 function parseShopeeIncome(sheet: XLSX.WorkSheet): NormalizedPlatformOrder[] {
@@ -437,7 +439,7 @@ export function parsePlatformExcel(buffer: ArrayBuffer): {
       defval: "",
     }) as unknown[][];
     if (summaryRows.some((r) => String((r as unknown[])[0] ?? "").trim() === "Laporan Penghasilan")) {
-      return { platform: "shopee", orders: parseShopeeSettlement(summaryRows) };
+      return { platform: "shopee", orders: parseShopeeSettlement(workbook) };
     }
   }
 
