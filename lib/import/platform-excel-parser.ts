@@ -55,7 +55,13 @@ function parseExcelDate(val: unknown): string | null {
 
 function findCell(rows: unknown[][], labelCol0: string): unknown {
   const row = rows.find((r) => String((r as unknown[])[0] ?? "").trim() === labelCol0);
-  return row ? (row as unknown[])[1] : undefined;
+  if (!row) return undefined;
+  const cells = row as unknown[];
+  // Scan past col 0 for the first non-empty numeric-ish value; handles merged cells that
+  // push the value into a column other than index 1.
+  return cells.slice(1).find(
+    (v) => typeof v === "number" || (typeof v === "string" && v.trim() !== "" && !isNaN(parseFloat(v)))
+  );
 }
 
 function groupBy<T>(rows: T[], key: (r: T) => string): Map<string, T[]> {
@@ -274,9 +280,18 @@ function parseShopee(sheet: XLSX.WorkSheet): NormalizedPlatformOrder[] {
 function parseShopeeSettlement(rows: unknown[][]): NormalizedPlatformOrder[] {
   const startDate = parseExcelDate(findCell(rows, "Dari")) ?? new Date().toISOString().split("T")[0];
   const endDate = parseExcelDate(findCell(rows, "ke")) ?? startDate;
-  const grossAmount = Math.abs(parseNum(findCell(rows, "1. Total Pendapatan")));
-  const platformFee = Math.abs(parseNum(findCell(rows, "Biaya Layanan")));
-  const netAmount = Math.abs(parseNum(findCell(rows, "3. Total yang Dilepas")));
+
+  const grossRaw = findCell(rows, "1. Total Pendapatan");
+  const feeRaw = findCell(rows, "Biaya Layanan");
+  const netRaw = findCell(rows, "3. Total yang Dilepas");
+
+  const grossAmount = Math.abs(Number(grossRaw) || 0);
+  const platformFee = Math.abs(Number(feeRaw) || 0);
+  const netAmount = Math.abs(Number(netRaw) || 0);
+
+  console.log("[shopee-settlement] grossRevenue raw:", grossRaw, "→", grossAmount);
+  console.log("[shopee-settlement] platformFee raw:", feeRaw, "→", platformFee);
+  console.log("[shopee-settlement] netAmount raw:", netRaw, "→", netAmount);
 
   const externalOrderId = `SETTLEMENT-${startDate}-to-${endDate}`;
 
