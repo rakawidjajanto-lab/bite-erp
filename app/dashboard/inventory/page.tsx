@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { MonthYearPicker, monthBounds } from "@/components/filters/MonthYearPicker";
-import { Plus, AlertTriangle, Upload, X, Download, Package } from "lucide-react";
+import { Plus, AlertTriangle, Upload, X, Download, Package, Link, ArrowLeft } from "lucide-react";
 import { parseInventoryCsv, type ParsedInventoryRow } from "@/lib/import/inventory-parser";
 import { formatIDR } from "@/lib/formatters/currency";
 
@@ -33,8 +33,16 @@ type SupplyItem = {
   name: string;
   unit: string;
   gramsPerUnit: string;
-  stock: string;
+  stockVenue: string;
+  stockEcommerce: string;
   pricePerUnit: string;
+};
+
+type UnlinkedTx = {
+  id: string;
+  date: string;
+  description: string;
+  amountOut: string | null;
 };
 
 const MOVEMENT_LABELS: Record<string, string> = {
@@ -57,7 +65,24 @@ const MOVEMENT_COLORS: Record<string, string> = {
   MARKETING_GIVEAWAY: "bg-pink-100 text-pink-700",
 };
 
-const EMPTY_SUPPLY_FORM = { name: "", unit: "", gramsPerUnit: "1", stock: "0", pricePerUnit: "0" };
+const EMPTY_SUPPLY_FORM = {
+  name: "",
+  unit: "",
+  gramsPerUnit: "1",
+  stockVenue: "0",
+  stockEcommerce: "0",
+  pricePerUnit: "0",
+};
+
+const EMPTY_LINK_FORM = {
+  supplyItemId: "",
+  name: "",
+  unit: "gram",
+  gramsPerUnit: "1",
+  quantity: "",
+  location: "VENUE" as "VENUE" | "ECOMMERCE",
+  pricePerUnit: "",
+};
 
 export default function InventoryPage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -79,6 +104,15 @@ export default function InventoryPage() {
   const [supplyForm, setSupplyForm] = useState(EMPTY_SUPPLY_FORM);
   const [savingSupply, setSavingSupply] = useState(false);
 
+  // Link transaction modal state
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [linkStep, setLinkStep] = useState<1 | 2>(1);
+  const [unlinkedTxs, setUnlinkedTxs] = useState<UnlinkedTx[]>([]);
+  const [txSearch, setTxSearch] = useState("");
+  const [selectedTx, setSelectedTx] = useState<UnlinkedTx | null>(null);
+  const [linkForm, setLinkForm] = useState(EMPTY_LINK_FORM);
+  const [savingLink, setSavingLink] = useState(false);
+
   const fetchInventory = useCallback(() => {
     fetch("/api/inventory").then((r) => r.json()).then(setInventory).catch(() => {});
     fetch("/api/settings/products").then((r) => r.json()).then(setProducts).catch(() => {});
@@ -89,6 +123,10 @@ export default function InventoryPage() {
 
   const fetchSupplyItems = useCallback(() => {
     fetch("/api/supply-items").then((r) => r.json()).then(setSupplyItems).catch(() => {});
+  }, []);
+
+  const fetchUnlinkedTxs = useCallback(() => {
+    fetch("/api/supply-items/link").then((r) => r.json()).then(setUnlinkedTxs).catch(() => {});
   }, []);
 
   useEffect(() => { fetchInventory(); }, [fetchInventory]);
@@ -151,7 +189,8 @@ export default function InventoryPage() {
         name: supplyForm.name,
         unit: supplyForm.unit,
         gramsPerUnit: parseFloat(supplyForm.gramsPerUnit) || 1,
-        stock: parseFloat(supplyForm.stock) || 0,
+        stockVenue: parseFloat(supplyForm.stockVenue) || 0,
+        stockEcommerce: parseFloat(supplyForm.stockEcommerce) || 0,
         pricePerUnit: parseFloat(supplyForm.pricePerUnit) || 0,
       }),
     });
@@ -160,6 +199,72 @@ export default function InventoryPage() {
     setSupplyForm(EMPTY_SUPPLY_FORM);
     fetchSupplyItems();
   }
+
+  function openLinkModal() {
+    setLinkStep(1);
+    setSelectedTx(null);
+    setLinkForm(EMPTY_LINK_FORM);
+    setTxSearch("");
+    fetchUnlinkedTxs();
+    setShowLinkModal(true);
+  }
+
+  function selectTx(tx: UnlinkedTx) {
+    setSelectedTx(tx);
+    const existingItem = supplyItems.find((s) =>
+      s.name.toLowerCase() === tx.description.trim().toLowerCase()
+    );
+    if (existingItem) {
+      setLinkForm({
+        supplyItemId: existingItem.id,
+        name: existingItem.name,
+        unit: existingItem.unit,
+        gramsPerUnit: existingItem.gramsPerUnit,
+        quantity: "",
+        location: "VENUE",
+        pricePerUnit: "",
+      });
+    } else {
+      setLinkForm({
+        ...EMPTY_LINK_FORM,
+        name: tx.description.trim(),
+      });
+    }
+    setLinkStep(2);
+  }
+
+  const suggestedPrice =
+    selectedTx?.amountOut && parseFloat(linkForm.quantity) > 0
+      ? (Number(selectedTx.amountOut) / parseFloat(linkForm.quantity)).toFixed(2)
+      : "";
+
+  async function handleLinkSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedTx) return;
+    setSavingLink(true);
+    const priceToSend = parseFloat(linkForm.pricePerUnit) || parseFloat(suggestedPrice) || 0;
+    await fetch("/api/supply-items/link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transactionId: selectedTx.id,
+        supplyItemId: linkForm.supplyItemId || undefined,
+        name: linkForm.name,
+        unit: linkForm.unit,
+        gramsPerUnit: parseFloat(linkForm.gramsPerUnit) || 1,
+        quantity: parseFloat(linkForm.quantity),
+        location: linkForm.location,
+        pricePerUnit: priceToSend,
+      }),
+    });
+    setSavingLink(false);
+    setShowLinkModal(false);
+    fetchSupplyItems();
+  }
+
+  const filteredTxs = unlinkedTxs.filter((t) =>
+    t.description.toLowerCase().includes(txSearch.toLowerCase())
+  );
 
   return (
     <>
@@ -345,45 +450,65 @@ export default function InventoryPage() {
               <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                 <Package size={18} className="text-gray-500" /> Supply Items
               </h2>
-              <p className="text-sm text-gray-500">Raw materials used in R&D projects</p>
+              <p className="text-sm text-gray-500">Raw materials — linked from SUPPLIES transactions</p>
             </div>
-            <button
-              onClick={() => { setShowSupplyModal(true); setSupplyForm(EMPTY_SUPPLY_FORM); }}
-              className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition min-h-[44px]"
-            >
-              <Plus size={15} /> Add Item
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setShowSupplyModal(true); setSupplyForm(EMPTY_SUPPLY_FORM); }}
+                className="flex items-center gap-1.5 border border-gray-300 text-gray-600 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition min-h-[44px]"
+              >
+                <Plus size={15} /> New Item
+              </button>
+              <button
+                onClick={openLinkModal}
+                className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition min-h-[44px]"
+              >
+                <Link size={15} /> Add Stock
+              </button>
+            </div>
           </div>
 
           {supplyItems.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-400 text-sm">
-              No supply items yet. Add raw materials to track R&D usage.
+              No supply items yet. Use &ldquo;Add Stock&rdquo; to link a SUPPLIES transaction.
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+              <table className="w-full text-sm min-w-[700px]">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
                     <th className="text-left py-3 px-4 text-gray-500 font-medium text-xs">Name</th>
                     <th className="text-left py-3 px-4 text-gray-500 font-medium text-xs">Unit</th>
                     <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs">Grams/Unit</th>
-                    <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs">Stock</th>
+                    <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs">Stock (Venue)</th>
+                    <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs">Stock (E-com)</th>
+                    <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs">Total Stock</th>
                     <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs">Price/Unit</th>
                     <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs">Total Value</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {supplyItems.map((item) => {
-                    const stock = parseFloat(item.stock);
+                    const venue = parseFloat(item.stockVenue);
+                    const ecom = parseFloat(item.stockEcommerce);
+                    const total = venue + ecom;
                     const price = parseFloat(item.pricePerUnit);
-                    const totalValue = stock * price;
+                    const totalValue = total * price;
                     return (
                       <tr key={item.id} className="hover:bg-gray-50">
                         <td className="py-3 px-4 font-medium text-gray-900">{item.name}</td>
                         <td className="py-3 px-4 text-gray-500">{item.unit}</td>
-                        <td className="py-3 px-4 text-right text-gray-600">{parseFloat(item.gramsPerUnit).toLocaleString("id-ID")}</td>
+                        <td className="py-3 px-4 text-right text-gray-600">
+                          {parseFloat(item.gramsPerUnit).toLocaleString("id-ID")}
+                        </td>
+                        <td className="py-3 px-4 text-right text-gray-700">
+                          {venue.toLocaleString("id-ID")}
+                        </td>
+                        <td className="py-3 px-4 text-right text-gray-700">
+                          {ecom.toLocaleString("id-ID")}
+                        </td>
                         <td className="py-3 px-4 text-right font-semibold text-gray-900">
-                          {parseFloat(item.stock).toLocaleString("id-ID")} {item.unit}
+                          {total.toLocaleString("id-ID")} {item.unit}
                         </td>
                         <td className="py-3 px-4 text-right text-gray-600">{formatIDR(price)}</td>
                         <td className="py-3 px-4 text-right font-semibold text-green-700">{formatIDR(totalValue)}</td>
@@ -554,12 +679,12 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* ── Add Supply Item modal ── */}
+      {/* ── New Supply Item modal (direct creation) ── */}
       {showSupplyModal && (
         <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-3 sm:p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl p-5 sm:p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-gray-900">Add Supply Item</h3>
+              <h3 className="font-semibold text-gray-900">New Supply Item</h3>
               <button onClick={() => setShowSupplyModal(false)}><X size={18} /></button>
             </div>
             <form onSubmit={handleSupplySubmit} className="space-y-3">
@@ -599,28 +724,40 @@ export default function InventoryPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Initial Stock</label>
+                  <label className="text-xs text-gray-500 mb-1 block">Initial Stock (Venue)</label>
                   <input
                     type="number"
                     inputMode="numeric"
                     min={0}
                     step="any"
-                    value={supplyForm.stock}
-                    onChange={(e) => setSupplyForm((f) => ({ ...f, stock: e.target.value }))}
+                    value={supplyForm.stockVenue}
+                    onChange={(e) => setSupplyForm((f) => ({ ...f, stockVenue: e.target.value }))}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Price / Unit (IDR)</label>
+                  <label className="text-xs text-gray-500 mb-1 block">Initial Stock (E-com)</label>
                   <input
                     type="number"
                     inputMode="numeric"
                     min={0}
-                    value={supplyForm.pricePerUnit}
-                    onChange={(e) => setSupplyForm((f) => ({ ...f, pricePerUnit: e.target.value }))}
+                    step="any"
+                    value={supplyForm.stockEcommerce}
+                    onChange={(e) => setSupplyForm((f) => ({ ...f, stockEcommerce: e.target.value }))}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Price / Unit (IDR)</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={supplyForm.pricePerUnit}
+                  onChange={(e) => setSupplyForm((f) => ({ ...f, pricePerUnit: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
               <div className="flex gap-2 pt-1">
                 <button type="button" onClick={() => setShowSupplyModal(false)} className="flex-1 border border-gray-300 text-gray-700 rounded-lg py-3 text-sm font-medium">
@@ -631,6 +768,222 @@ export default function InventoryPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Link Transaction modal ── */}
+      {showLinkModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-3 sm:p-6">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 sticky top-0 bg-white z-10">
+              <div>
+                <h2 className="font-semibold text-gray-900">Add Stock from Transaction</h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {linkStep === 1 ? "Step 1 — choose a SUPPLIES transaction" : "Step 2 — set quantity and location"}
+                </p>
+              </div>
+              <button onClick={() => setShowLinkModal(false)} className="p-1.5 hover:bg-gray-100 rounded-lg">
+                <X size={18} />
+              </button>
+            </div>
+
+            {linkStep === 1 && (
+              <div className="p-5 space-y-3">
+                <input
+                  type="text"
+                  value={txSearch}
+                  onChange={(e) => setTxSearch(e.target.value)}
+                  placeholder="Search by description..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  autoFocus
+                />
+                {filteredTxs.length === 0 ? (
+                  <div className="py-10 text-center text-gray-400 text-sm">
+                    {unlinkedTxs.length === 0
+                      ? "No unlinked SUPPLIES transactions found."
+                      : "No transactions match your search."}
+                  </div>
+                ) : (
+                  <div className="space-y-1 max-h-[50vh] overflow-y-auto">
+                    {filteredTxs.map((tx) => (
+                      <button
+                        key={tx.id}
+                        onClick={() => selectTx(tx)}
+                        className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition"
+                      >
+                        <p className="text-sm font-medium text-gray-900 truncate">{tx.description}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-gray-400">
+                            {new Date(tx.date).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                          </span>
+                          {tx.amountOut && (
+                            <span className="text-xs font-semibold text-red-500">
+                              −{formatIDR(Number(tx.amountOut))}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {linkStep === 2 && selectedTx && (
+              <form onSubmit={handleLinkSubmit} className="p-5 space-y-4">
+                <div className="bg-blue-50 rounded-xl px-4 py-3 text-sm">
+                  <p className="font-medium text-blue-900 truncate">{selectedTx.description}</p>
+                  {selectedTx.amountOut && (
+                    <p className="text-xs text-blue-600 mt-0.5">
+                      Total cost: {formatIDR(Number(selectedTx.amountOut))}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Supply Item</label>
+                  <select
+                    value={linkForm.supplyItemId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      const existing = supplyItems.find((s) => s.id === id);
+                      if (existing) {
+                        setLinkForm((f) => ({
+                          ...f,
+                          supplyItemId: id,
+                          name: existing.name,
+                          unit: existing.unit,
+                          gramsPerUnit: existing.gramsPerUnit,
+                        }));
+                      } else {
+                        setLinkForm((f) => ({ ...f, supplyItemId: "" }));
+                      }
+                    }}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                  >
+                    <option value="">— Create new supply item —</option>
+                    {supplyItems.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {!linkForm.supplyItemId && (
+                  <>
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">Item Name</label>
+                      <input
+                        required
+                        value={linkForm.name}
+                        onChange={(e) => setLinkForm((f) => ({ ...f, name: e.target.value }))}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Unit</label>
+                        <input
+                          required
+                          value={linkForm.unit}
+                          onChange={(e) => setLinkForm((f) => ({ ...f, unit: e.target.value }))}
+                          placeholder="gram / ml / pcs"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Grams / Unit</label>
+                        <input
+                          type="number"
+                          min={0}
+                          step="any"
+                          value={linkForm.gramsPerUnit}
+                          onChange={(e) => setLinkForm((f) => ({ ...f, gramsPerUnit: e.target.value }))}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Quantity received</label>
+                    <input
+                      required
+                      type="number"
+                      inputMode="decimal"
+                      min={0.0001}
+                      step="any"
+                      value={linkForm.quantity}
+                      onChange={(e) => setLinkForm((f) => ({ ...f, quantity: e.target.value }))}
+                      placeholder="e.g. 500"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">
+                      Price/unit (IDR)
+                      {suggestedPrice && (
+                        <button
+                          type="button"
+                          onClick={() => setLinkForm((f) => ({ ...f, pricePerUnit: suggestedPrice }))}
+                          className="ml-1 text-blue-500 underline"
+                        >
+                          use {formatIDR(parseFloat(suggestedPrice))}
+                        </button>
+                      )}
+                    </label>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      value={linkForm.pricePerUnit}
+                      onChange={(e) => setLinkForm((f) => ({ ...f, pricePerUnit: e.target.value }))}
+                      placeholder={suggestedPrice || "0"}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Location</label>
+                  <div className="flex gap-2">
+                    {(["VENUE", "ECOMMERCE"] as const).map((loc) => (
+                      <button
+                        key={loc}
+                        type="button"
+                        onClick={() => setLinkForm((f) => ({ ...f, location: loc }))}
+                        className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition ${
+                          linkForm.location === loc
+                            ? "bg-blue-600 text-white border-blue-600"
+                            : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+                        }`}
+                      >
+                        {loc === "VENUE" ? "Venue" : "E-commerce"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setLinkStep(1)}
+                    className="flex items-center gap-1.5 border border-gray-300 text-gray-600 rounded-lg py-3 px-4 text-sm font-medium hover:bg-gray-50 min-h-[44px]"
+                  >
+                    <ArrowLeft size={14} /> Back
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingLink || !linkForm.quantity}
+                    className="flex-1 bg-blue-600 text-white rounded-lg py-3 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 min-h-[44px]"
+                  >
+                    {savingLink ? "Linking..." : "Link & Add Stock"}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

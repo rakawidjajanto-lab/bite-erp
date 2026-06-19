@@ -7,12 +7,13 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { name, unit, gramsPerUnit, stock, pricePerUnit } = await req.json() as {
+  const { name, unit, gramsPerUnit, stockVenue, stockEcommerce, pricePerUnit } = await req.json() as {
     name: string;
     unit: string;
-    gramsPerUnit: number;
-    stock: number;
-    pricePerUnit: number;
+    gramsPerUnit?: number;
+    stockVenue?: number;
+    stockEcommerce?: number;
+    pricePerUnit?: number;
   };
 
   if (!name?.trim() || !unit?.trim()) {
@@ -24,7 +25,8 @@ export async function POST(req: Request) {
       name: name.trim(),
       unit: unit.trim(),
       gramsPerUnit: gramsPerUnit ?? 1,
-      stock: stock ?? 0,
+      stockVenue: stockVenue ?? 0,
+      stockEcommerce: stockEcommerce ?? 0,
       pricePerUnit: pricePerUnit ?? 0,
     },
   });

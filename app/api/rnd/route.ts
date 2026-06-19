@@ -77,7 +77,7 @@ export async function POST(req: Request) {
       });
       await prisma.supplyItem.update({
         where: { id: mat.supplyItemId },
-        data: { stock: { decrement: Number(mat.quantityUsed) } },
+        data: { stockVenue: { decrement: Number(mat.quantityUsed) } },
       });
     }
   }

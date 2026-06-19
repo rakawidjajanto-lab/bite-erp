@@ -29,6 +29,28 @@ CREATE TABLE IF NOT EXISTS "supply_items" (
   CONSTRAINT "supply_items_pkey" PRIMARY KEY ("id")
 );
 
+-- Split supply_items stock into venue vs ecommerce locations (idempotent)
+ALTER TABLE "supply_items"
+  ADD COLUMN IF NOT EXISTS "stockVenue"     DECIMAL(10,4) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS "stockEcommerce" DECIMAL(10,4) NOT NULL DEFAULT 0;
+
+-- One-time migration: move legacy single stock → stockVenue (skips rows already migrated)
+UPDATE "supply_items" SET "stockVenue" = stock WHERE "stockVenue" = 0 AND stock > 0;
+
+-- inventory_transaction_links: links a SUPPLIES transaction to a supply item (idempotent)
+CREATE TABLE IF NOT EXISTS "inventory_transaction_links" (
+  "id"            TEXT          NOT NULL,
+  "supplyItemId"  TEXT          NOT NULL,
+  "transactionId" TEXT          NOT NULL,
+  "quantityAdded" DECIMAL(10,4) NOT NULL,
+  "location"      TEXT          NOT NULL DEFAULT 'VENUE',
+  "createdAt"     TIMESTAMP(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "itl_pkey"      PRIMARY KEY ("id"),
+  CONSTRAINT "itl_item_fk"   FOREIGN KEY ("supplyItemId")  REFERENCES "supply_items"("id")  ON DELETE CASCADE,
+  CONSTRAINT "itl_tx_fk"     FOREIGN KEY ("transactionId") REFERENCES "transactions"("id")  ON DELETE CASCADE,
+  CONSTRAINT "itl_tx_unique" UNIQUE ("transactionId")
+);
+
 -- rnd_materials: materials consumed by an R&D project (idempotent)
 CREATE TABLE IF NOT EXISTS "rnd_materials" (
   "id"            TEXT          NOT NULL,
@@ -77,5 +99,6 @@ ALTER TABLE "product_variant_ingredients" DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "ingredient_price_history"    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "customer_orders"             DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "customer_order_items"        DISABLE ROW LEVEL SECURITY;
-ALTER TABLE "supply_items"                DISABLE ROW LEVEL SECURITY;
-ALTER TABLE "rnd_materials"               DISABLE ROW LEVEL SECURITY;
+ALTER TABLE "supply_items"                    DISABLE ROW LEVEL SECURITY;
+ALTER TABLE "rnd_materials"                   DISABLE ROW LEVEL SECURITY;
+ALTER TABLE "inventory_transaction_links"     DISABLE ROW LEVEL SECURITY;

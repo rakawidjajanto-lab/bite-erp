@@ -50,6 +50,27 @@ const createSchema = z.object({
   notes: z.string().optional(),
 });
 
+async function autoSyncSupplyItem(description: string, totalCost: number) {
+  const name = description.trim();
+
+  const match = await prisma.supplyItem.findFirst({
+    where: { name: { equals: name, mode: "insensitive" } },
+  });
+
+  if (!match) {
+    await prisma.supplyItem.create({
+      data: {
+        name,
+        unit: "unit",
+        gramsPerUnit: 1,
+        stockVenue: 0,
+        stockEcommerce: 0,
+        pricePerUnit: totalCost,
+      },
+    });
+  }
+}
+
 export async function POST(req: Request) {
   const body = await req.json();
   const parsed = createSchema.safeParse(body);
@@ -73,6 +94,10 @@ export async function POST(req: Request) {
       notes,
     },
   });
+
+  if (category === "SUPPLIES") {
+    await autoSyncSupplyItem(description, type === "out" ? amount : 0);
+  }
 
   return NextResponse.json(tx, { status: 201 });
 }

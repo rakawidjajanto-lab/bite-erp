@@ -45,7 +45,7 @@ type RndProject = {
   materials: Material[];
 };
 
-type SupplyItem = { id: string; name: string; unit: string; pricePerUnit: string; stock: string };
+type SupplyItem = { id: string; name: string; unit: string; pricePerUnit: string; stockVenue: string; stockEcommerce: string };
 type Product = { id: string; name: string; unitCost: number; flavors: { id: string; name: string }[] };
 type FormInventoryItem = { productId: string; flavorId: string; quantity: number };
 type FormMaterial = { supplyItemId: string; quantityUsed: string };
@@ -637,7 +637,7 @@ export default function RndPage() {
                             <option value="">Select item...</option>
                             {supplyItems.map((s) => (
                               <option key={s.id} value={s.id}>
-                                {s.name} ({parseFloat(s.stock).toLocaleString("id-ID")} {s.unit} left)
+                                {s.name} ({parseFloat(s.stockVenue).toLocaleString("id-ID")} {s.unit} venue left)
                               </option>
                             ))}
                           </select>
