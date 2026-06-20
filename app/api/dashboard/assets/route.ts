@@ -6,7 +6,7 @@ export async function GET() {
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-  const [txResult, inventoryResult, rndResult, giveawayResult, physicalResult] =
+  const [txResult, inventoryResult, rndResult, giveawayResult, physicalResult, supplyItemsResult] =
     await Promise.allSettled([
       prisma.$queryRaw<[{ total_in: string; total_out: string }]>`
         SELECT
@@ -26,6 +26,11 @@ export async function GET() {
         select: { quantity: true, unitCost: true },
       }),
       prisma.physicalAsset.aggregate({ _sum: { currentValue: true } }),
+      prisma.$queryRaw<[{ total: string }]>`
+        SELECT COALESCE(SUM(("stockVenue" + "stockEcommerce") * "pricePerUnit"), 0) AS total
+        FROM supply_items
+        WHERE "pricePerUnit" > 0
+      `,
     ]);
 
   const txRaw =
@@ -44,6 +49,10 @@ export async function GET() {
     physicalResult.status === "fulfilled"
       ? physicalResult.value
       : { _sum: { currentValue: null } };
+  const supplyItemsValue =
+    supplyItemsResult.status === "fulfilled"
+      ? Number(supplyItemsResult.value[0]?.total ?? 0)
+      : 0;
 
   const cashBalance =
     Number(txRaw[0]?.total_in ?? 0) - Number(txRaw[0]?.total_out ?? 0);
@@ -64,8 +73,9 @@ export async function GET() {
   return NextResponse.json({
     cashBalance,
     inventoryValue,
+    supplyItemsValue,
     physicalAssetValue,
-    totalAssets: cashBalance + inventoryValue + physicalAssetValue,
+    totalAssets: cashBalance + inventoryValue + supplyItemsValue + physicalAssetValue,
     rndThisMonth,
     marketingGiveawayValue,
   });

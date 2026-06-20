@@ -36,6 +36,7 @@ type CashFlowMonth = {
 type AssetsData = {
   cashBalance: number;
   inventoryValue: number;
+  supplyItemsValue: number;
   physicalAssetValue: number;
   totalAssets: number;
   rndThisMonth: number;
@@ -297,7 +298,7 @@ export function DashboardOverview() {
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
           <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
             <div className="p-2 bg-purple-50 rounded-lg shrink-0">
               <FlaskConical size={16} className="text-purple-600" />
@@ -317,6 +318,17 @@ export function DashboardOverview() {
               <p className="text-xs text-gray-500">Marketing Giveaways</p>
               <p className="text-base font-semibold text-gray-900 truncate">
                 {assets ? formatIDR(assets.marketingGiveawayValue) : "—"}
+              </p>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+            <div className="p-2 bg-blue-50 rounded-lg shrink-0">
+              <Package size={16} className="text-blue-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500">Supply Inventory</p>
+              <p className="text-base font-semibold text-gray-900 truncate">
+                {assets ? formatIDR(assets.supplyItemsValue) : "—"}
               </p>
             </div>
           </div>

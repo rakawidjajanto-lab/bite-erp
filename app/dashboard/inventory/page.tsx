@@ -99,6 +99,7 @@ export default function InventoryPage() {
 
   // Supply items state
   const [supplyItems, setSupplyItems] = useState<SupplyItem[]>([]);
+  const [stockDisplayMode, setStockDisplayMode] = useState<"units" | "grams">("units");
   const [showSupplyModal, setShowSupplyModal] = useState(false);
   const [supplyForm, setSupplyForm] = useState(EMPTY_SUPPLY_FORM);
   const [savingSupply, setSavingSupply] = useState(false);
@@ -485,7 +486,16 @@ export default function InventoryPage() {
                     <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs">Grams/Unit</th>
                     <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs">Stock (Venue)</th>
                     <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs">Stock (E-com)</th>
-                    <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs">Total Stock</th>
+                    <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs">
+                      <button
+                        onClick={() => setStockDisplayMode((m) => m === "units" ? "grams" : "units")}
+                        className="inline-flex items-center gap-1 hover:text-blue-600 transition"
+                        title="Click to toggle display"
+                      >
+                        Total Stock
+                        <span className="text-gray-300 font-normal">({stockDisplayMode === "units" ? "units" : "g"})</span>
+                      </button>
+                    </th>
                     <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs">Price/Unit</th>
                     <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs">Total Value</th>
                   </tr>
@@ -509,7 +519,24 @@ export default function InventoryPage() {
                             )}
                           </div>
                         </td>
-                        <td className="py-3 px-4 text-gray-500">{item.unit}</td>
+                        <td className="py-3 px-4">
+                          <select
+                            value={item.unit}
+                            onChange={(e) => {
+                              const newUnit = e.target.value;
+                              fetch(`/api/supply-items/${item.id}`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ unit: newUnit }),
+                              }).then(() => fetchSupplyItems());
+                            }}
+                            className="border border-gray-200 rounded-md px-2 py-1 text-sm text-gray-600 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"
+                          >
+                            {["gram", "kg", "ml", "liter", "pcs", "unit"].map((u) => (
+                              <option key={u} value={u}>{u}</option>
+                            ))}
+                          </select>
+                        </td>
                         <td className="py-3 px-4 text-right text-gray-600">
                           {parseFloat(item.gramsPerUnit).toLocaleString("id-ID")}
                         </td>
@@ -520,7 +547,9 @@ export default function InventoryPage() {
                           {ecom.toLocaleString("id-ID")}
                         </td>
                         <td className="py-3 px-4 text-right font-semibold text-gray-900">
-                          {total.toLocaleString("id-ID")} {item.unit}
+                          {stockDisplayMode === "grams"
+                            ? `${(total * parseFloat(item.gramsPerUnit)).toLocaleString("id-ID")} g`
+                            : `${total.toLocaleString("id-ID")} ${item.unit}`}
                         </td>
                         <td className="py-3 px-4 text-right text-gray-600">
                           {price > 0 ? formatIDR(price) : <span className="text-gray-300">—</span>}
