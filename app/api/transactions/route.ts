@@ -65,7 +65,7 @@ async function autoSyncSupplyItem(description: string, totalCost: number) {
         gramsPerUnit: 1,
         stockVenue: 0,
         stockEcommerce: 0,
-        pricePerUnit: totalCost,
+        pricePerUnit: 0,
       },
     });
   }

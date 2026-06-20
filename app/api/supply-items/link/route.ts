@@ -65,6 +65,7 @@ export async function POST(req: Request) {
   const stockField = location === "VENUE" ? "stockVenue" : "stockEcommerce";
   const updateData: Record<string, unknown> = { [stockField]: { increment: quantity } };
   if (pricePerUnit !== undefined && pricePerUnit > 0) updateData.pricePerUnit = pricePerUnit;
+  if (gramsPerUnit !== undefined && gramsPerUnit > 0) updateData.gramsPerUnit = gramsPerUnit;
 
   const [item] = await Promise.all([
     prisma.supplyItem.update({

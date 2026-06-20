@@ -23,7 +23,7 @@ async function main() {
           gramsPerUnit: 1,
           stockVenue: 0,
           stockEcommerce: 0,
-          pricePerUnit: tx.amountOut ? Number(tx.amountOut) : 0,
+          pricePerUnit: 0,
         },
       });
       console.log(`Created stub: ${name}`);

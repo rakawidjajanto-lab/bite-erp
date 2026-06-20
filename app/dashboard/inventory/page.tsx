@@ -81,7 +81,6 @@ const EMPTY_LINK_FORM = {
   gramsPerUnit: "1",
   quantity: "",
   location: "VENUE" as "VENUE" | "ECOMMERCE",
-  pricePerUnit: "",
 };
 
 export default function InventoryPage() {
@@ -222,7 +221,6 @@ export default function InventoryPage() {
         gramsPerUnit: existingItem.gramsPerUnit,
         quantity: "",
         location: "VENUE",
-        pricePerUnit: "",
       });
     } else {
       setLinkForm({
@@ -233,16 +231,15 @@ export default function InventoryPage() {
     setLinkStep(2);
   }
 
-  const suggestedPrice =
-    selectedTx?.amountOut && parseFloat(linkForm.quantity) > 0
-      ? (Number(selectedTx.amountOut) / parseFloat(linkForm.quantity)).toFixed(2)
-      : "";
+  const linkTotalPrice = selectedTx?.amountOut ? Number(selectedTx.amountOut) : 0;
+  const linkQty = parseFloat(linkForm.quantity) || 0;
+  const computedPricePerUnit = linkQty > 0 ? linkTotalPrice / linkQty : null;
 
   async function handleLinkSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedTx) return;
     setSavingLink(true);
-    const priceToSend = parseFloat(linkForm.pricePerUnit) || parseFloat(suggestedPrice) || 0;
+    const priceToSend = computedPricePerUnit ?? 0;
     await fetch("/api/supply-items/link", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -496,7 +493,16 @@ export default function InventoryPage() {
                     const totalValue = total * price;
                     return (
                       <tr key={item.id} className="hover:bg-gray-50">
-                        <td className="py-3 px-4 font-medium text-gray-900">{item.name}</td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-gray-900">{item.name}</span>
+                            {price === 0 && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700">
+                                Needs quantity
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="py-3 px-4 text-gray-500">{item.unit}</td>
                         <td className="py-3 px-4 text-right text-gray-600">
                           {parseFloat(item.gramsPerUnit).toLocaleString("id-ID")}
@@ -510,8 +516,12 @@ export default function InventoryPage() {
                         <td className="py-3 px-4 text-right font-semibold text-gray-900">
                           {total.toLocaleString("id-ID")} {item.unit}
                         </td>
-                        <td className="py-3 px-4 text-right text-gray-600">{formatIDR(price)}</td>
-                        <td className="py-3 px-4 text-right font-semibold text-green-700">{formatIDR(totalValue)}</td>
+                        <td className="py-3 px-4 text-right text-gray-600">
+                          {price > 0 ? formatIDR(price) : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="py-3 px-4 text-right font-semibold text-green-700">
+                          {price > 0 ? formatIDR(totalValue) : <span className="text-gray-300">—</span>}
+                        </td>
                       </tr>
                     );
                   })}
@@ -832,13 +842,12 @@ export default function InventoryPage() {
 
             {linkStep === 2 && selectedTx && (
               <form onSubmit={handleLinkSubmit} className="p-5 space-y-4">
+                {/* Transaction — read-only summary */}
                 <div className="bg-blue-50 rounded-xl px-4 py-3 text-sm">
                   <p className="font-medium text-blue-900 truncate">{selectedTx.description}</p>
-                  {selectedTx.amountOut && (
-                    <p className="text-xs text-blue-600 mt-0.5">
-                      Total cost: {formatIDR(Number(selectedTx.amountOut))}
-                    </p>
-                  )}
+                  <p className="text-xs text-blue-600 mt-0.5">
+                    Total purchase cost: {selectedTx.amountOut ? formatIDR(Number(selectedTx.amountOut)) : "—"}
+                  </p>
                 </div>
 
                 <div>
@@ -869,6 +878,7 @@ export default function InventoryPage() {
                   </select>
                 </div>
 
+                {/* Name + Unit — only for new items */}
                 {!linkForm.supplyItemId && (
                   <>
                     <div>
@@ -880,71 +890,56 @@ export default function InventoryPage() {
                         className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs text-gray-500 mb-1 block">Unit</label>
-                        <input
-                          required
-                          value={linkForm.unit}
-                          onChange={(e) => setLinkForm((f) => ({ ...f, unit: e.target.value }))}
-                          placeholder="gram / ml / pcs"
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-500 mb-1 block">Grams / Unit</label>
-                        <input
-                          type="number"
-                          min={0}
-                          step="any"
-                          value={linkForm.gramsPerUnit}
-                          onChange={(e) => setLinkForm((f) => ({ ...f, gramsPerUnit: e.target.value }))}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">Unit</label>
+                      <input
+                        required
+                        value={linkForm.unit}
+                        onChange={(e) => setLinkForm((f) => ({ ...f, unit: e.target.value }))}
+                        placeholder="gram / ml / pcs"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
                     </div>
                   </>
                 )}
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Quantity received</label>
-                    <input
-                      required
-                      type="number"
-                      inputMode="decimal"
-                      min={0.0001}
-                      step="any"
-                      value={linkForm.quantity}
-                      onChange={(e) => setLinkForm((f) => ({ ...f, quantity: e.target.value }))}
-                      placeholder="e.g. 500"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 mb-1 block">
-                      Price/unit (IDR)
-                      {suggestedPrice && (
-                        <button
-                          type="button"
-                          onClick={() => setLinkForm((f) => ({ ...f, pricePerUnit: suggestedPrice }))}
-                          className="ml-1 text-blue-500 underline"
-                        >
-                          use {formatIDR(parseFloat(suggestedPrice))}
-                        </button>
-                      )}
-                    </label>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min={0}
-                      value={linkForm.pricePerUnit}
-                      onChange={(e) => setLinkForm((f) => ({ ...f, pricePerUnit: e.target.value }))}
-                      placeholder={suggestedPrice || "0"}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                {/* Grams/Unit — always editable (new or existing item) */}
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Grams / Unit</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={linkForm.gramsPerUnit}
+                    onChange={(e) => setLinkForm((f) => ({ ...f, gramsPerUnit: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
                 </div>
+
+                {/* Quantity */}
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Quantity received</label>
+                  <input
+                    required
+                    type="number"
+                    inputMode="decimal"
+                    min={0.0001}
+                    step="any"
+                    value={linkForm.quantity}
+                    onChange={(e) => setLinkForm((f) => ({ ...f, quantity: e.target.value }))}
+                    placeholder="e.g. 500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Computed price per unit — read-only */}
+                {computedPricePerUnit !== null && (
+                  <div className="bg-gray-50 rounded-lg px-4 py-2.5 flex items-center justify-between">
+                    <span className="text-xs text-gray-500">Price per unit (calculated)</span>
+                    <span className="text-sm font-semibold text-gray-900">{formatIDR(computedPricePerUnit)}</span>
+                  </div>
+                )}
 
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Location</label>
