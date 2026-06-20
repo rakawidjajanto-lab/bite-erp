@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { MonthYearPicker, monthBounds } from "@/components/filters/MonthYearPicker";
-import { Plus, AlertTriangle, Upload, X, Download, Package, Link, ArrowLeft } from "lucide-react";
+import { Plus, AlertTriangle, Upload, X, Download, Package, Link, ArrowLeft, Pencil } from "lucide-react";
 import { parseInventoryCsv, type ParsedInventoryRow } from "@/lib/import/inventory-parser";
 import { formatIDR } from "@/lib/formatters/currency";
 
@@ -100,6 +100,9 @@ export default function InventoryPage() {
   // Supply items state
   const [supplyItems, setSupplyItems] = useState<SupplyItem[]>([]);
   const [stockDisplayMode, setStockDisplayMode] = useState<"units" | "grams">("units");
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ unit: "", gramsPerUnit: "", stockVenue: "", stockEcommerce: "" });
+  const [savingEdit, setSavingEdit] = useState(false);
   const [showSupplyModal, setShowSupplyModal] = useState(false);
   const [supplyForm, setSupplyForm] = useState(EMPTY_SUPPLY_FORM);
   const [savingSupply, setSavingSupply] = useState(false);
@@ -203,6 +206,33 @@ export default function InventoryPage() {
     setSavingSupply(false);
     setShowSupplyModal(false);
     setSupplyForm(EMPTY_SUPPLY_FORM);
+    fetchSupplyItems();
+  }
+
+  function startEdit(item: SupplyItem) {
+    setEditingItemId(item.id);
+    setEditForm({
+      unit: item.unit,
+      gramsPerUnit: item.gramsPerUnit,
+      stockVenue: item.stockVenue,
+      stockEcommerce: item.stockEcommerce,
+    });
+  }
+
+  async function saveEdit(id: string) {
+    setSavingEdit(true);
+    await fetch(`/api/supply-items/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        unit: editForm.unit,
+        gramsPerUnit: parseFloat(editForm.gramsPerUnit) || 1,
+        stockVenue: parseFloat(editForm.stockVenue) || 0,
+        stockEcommerce: parseFloat(editForm.stockEcommerce) || 0,
+      }),
+    });
+    setSavingEdit(false);
+    setEditingItemId(null);
     fetchSupplyItems();
   }
 
@@ -498,6 +528,7 @@ export default function InventoryPage() {
                     </th>
                     <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs">Price/Unit</th>
                     <th className="text-right py-3 px-4 text-gray-500 font-medium text-xs">Total Value</th>
+                    <th className="py-3 px-4" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -507,6 +538,94 @@ export default function InventoryPage() {
                     const total = venue + ecom;
                     const price = parseFloat(item.pricePerUnit);
                     const totalValue = total * price;
+                    const isEditing = item.id === editingItemId;
+
+                    if (isEditing) {
+                      const editVenue = parseFloat(editForm.stockVenue) || 0;
+                      const editEcom = parseFloat(editForm.stockEcommerce) || 0;
+                      const editTotal = editVenue + editEcom;
+                      const editGrams = parseFloat(editForm.gramsPerUnit) || 1;
+                      return (
+                        <tr key={item.id} className="bg-blue-50">
+                          <td className="py-2 px-4">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium text-gray-900">{item.name}</span>
+                              {price === 0 && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700">
+                                  Needs quantity
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2 px-4">
+                            <select
+                              value={editForm.unit}
+                              onChange={(e) => setEditForm((f) => ({ ...f, unit: e.target.value }))}
+                              className="border border-blue-300 rounded px-2 py-1 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            >
+                              {["gram", "kg", "ml", "liter", "pcs", "unit"].map((u) => (
+                                <option key={u} value={u}>{u}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="py-2 px-4 text-right">
+                            <input
+                              type="number"
+                              step="any"
+                              min={0}
+                              value={editForm.gramsPerUnit}
+                              onChange={(e) => setEditForm((f) => ({ ...f, gramsPerUnit: e.target.value }))}
+                              className="w-24 border border-blue-300 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </td>
+                          <td className="py-2 px-4 text-right">
+                            <input
+                              type="number"
+                              step="any"
+                              min={0}
+                              value={editForm.stockVenue}
+                              onChange={(e) => setEditForm((f) => ({ ...f, stockVenue: e.target.value }))}
+                              className="w-24 border border-blue-300 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </td>
+                          <td className="py-2 px-4 text-right">
+                            <input
+                              type="number"
+                              step="any"
+                              min={0}
+                              value={editForm.stockEcommerce}
+                              onChange={(e) => setEditForm((f) => ({ ...f, stockEcommerce: e.target.value }))}
+                              className="w-24 border border-blue-300 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </td>
+                          <td className="py-2 px-4 text-right font-semibold text-gray-900">
+                            {stockDisplayMode === "grams"
+                              ? `${(editTotal * editGrams).toLocaleString("id-ID")} g`
+                              : `${editTotal.toLocaleString("id-ID")} ${editForm.unit}`}
+                          </td>
+                          <td className="py-2 px-4 text-right text-gray-400 text-xs">unchanged</td>
+                          <td className="py-2 px-4 text-right text-gray-400 text-xs">—</td>
+                          <td className="py-2 px-4">
+                            <div className="flex items-center gap-1.5 justify-end">
+                              <button
+                                onClick={() => saveEdit(item.id)}
+                                disabled={savingEdit}
+                                className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                              >
+                                {savingEdit ? "…" : "Save"}
+                              </button>
+                              <button
+                                onClick={() => setEditingItemId(null)}
+                                className="px-3 py-1.5 border border-gray-300 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-50"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
                     return (
                       <tr key={item.id} className="hover:bg-gray-50">
                         <td className="py-3 px-4">
@@ -519,24 +638,7 @@ export default function InventoryPage() {
                             )}
                           </div>
                         </td>
-                        <td className="py-3 px-4">
-                          <select
-                            value={item.unit}
-                            onChange={(e) => {
-                              const newUnit = e.target.value;
-                              fetch(`/api/supply-items/${item.id}`, {
-                                method: "PATCH",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ unit: newUnit }),
-                              }).then(() => fetchSupplyItems());
-                            }}
-                            className="border border-gray-200 rounded-md px-2 py-1 text-sm text-gray-600 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"
-                          >
-                            {["gram", "kg", "ml", "liter", "pcs", "unit"].map((u) => (
-                              <option key={u} value={u}>{u}</option>
-                            ))}
-                          </select>
-                        </td>
+                        <td className="py-3 px-4 text-gray-500">{item.unit}</td>
                         <td className="py-3 px-4 text-right text-gray-600">
                           {parseFloat(item.gramsPerUnit).toLocaleString("id-ID")}
                         </td>
@@ -556,6 +658,15 @@ export default function InventoryPage() {
                         </td>
                         <td className="py-3 px-4 text-right font-semibold text-green-700">
                           {price > 0 ? formatIDR(totalValue) : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="py-3 px-4">
+                          <button
+                            onClick={() => startEdit(item)}
+                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                            title="Edit row"
+                          >
+                            <Pencil size={13} />
+                          </button>
                         </td>
                       </tr>
                     );
