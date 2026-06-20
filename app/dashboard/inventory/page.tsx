@@ -121,7 +121,13 @@ export default function InventoryPage() {
   }, [year, month]);
 
   const fetchSupplyItems = useCallback(() => {
-    fetch("/api/supply-items").then((r) => r.json()).then(setSupplyItems).catch(() => {});
+    fetch("/api/supply-items")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setSupplyItems(data);
+        else console.error("[fetchSupplyItems] unexpected response:", data);
+      })
+      .catch((e) => console.error("[fetchSupplyItems] fetch error:", e));
   }, []);
 
   const fetchUnlinkedTxs = useCallback(() => {

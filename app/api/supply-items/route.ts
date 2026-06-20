@@ -2,8 +2,14 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
 export async function GET() {
-  const items = await prisma.supplyItem.findMany({ orderBy: { name: "asc" } });
-  return NextResponse.json(items);
+  try {
+    const items = await prisma.supplyItem.findMany({ orderBy: { name: "asc" } });
+    console.log("[supply-items GET] row count:", items.length, "first 3:", JSON.stringify(items.slice(0, 3)));
+    return NextResponse.json(items);
+  } catch (err) {
+    console.error("[supply-items GET] ERROR:", err);
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request) {
