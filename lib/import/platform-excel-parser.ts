@@ -179,11 +179,12 @@ function parseTokopediaIncome(sheet: XLSX.WorkSheet): NormalizedPlatformOrder[] 
     if (String(row["Transaction type"] ?? "").trim() !== "Order") continue;
 
     const orderId = String(row["Order/Adjustment ID"] ?? "").trim();
+    const relatedOrderId = String(row["Related order ID"] ?? "").trim();
     if (!orderId) continue;
 
-    const grossAmount = parseNum(row["Total Revenue"]);
-    const platformFee = Math.abs(parseNum(row["Total Fees"]));
-    const netAmount = parseNum(row["Total settlement amount"]);
+    const grossAmount = Number(row["Total Revenue"] ?? 0);
+    const platformFee = Math.abs(Number(row["Total Fees"] ?? 0));
+    const netAmount = Number(row["Total settlement amount"] ?? 0);
     const productName = String(row["Details of items sold"] ?? "").trim();
 
     orders.push({
@@ -197,7 +198,14 @@ function parseTokopediaIncome(sheet: XLSX.WorkSheet): NormalizedPlatformOrder[] 
       feeReferenceId: `TOKOPEDIA-FEE-${orderId}`,
       feeDescription: `Tokopedia Platform Fee - ${orderId}`,
       items: productName ? [{ productName, quantity: 1, unitPrice: grossAmount }] : [],
-      rawData: row,
+      rawData: {
+        ...row,
+        orderId,
+        relatedOrderId,
+        grossAmount,
+        platformFee,
+        netAmount,
+      },
     });
   }
 
@@ -397,10 +405,11 @@ export function mergeTokopediaFiles(
     if (String(r[1] ?? "").trim() !== "Order") continue;
 
     const orderId = String(r[0] ?? "").trim();
+    const relatedOrderId = String(r[0] ?? "").trim();
     if (!orderId) continue;
 
-    const netAmount = parseNum(r[5]);
-    const platformFee = Math.abs(parseNum(r[14]));
+    const netAmount = Number(r[5] ?? 0);
+    const platformFee = Math.abs(Number(r[14] ?? 0));
     const settlementDate = parseExcelDate(r[3]);
 
     const completedItems = itemsByOrder.get(orderId) ?? [];
@@ -423,7 +432,7 @@ export function mergeTokopediaFiles(
         quantity: it.qty,
         unitPrice: it.unitPrice,
       })),
-      rawData: { orderId, netAmount, platformFee, settlementDate },
+      rawData: { orderId, relatedOrderId, netAmount, platformFee, settlementDate },
     });
   }
 
