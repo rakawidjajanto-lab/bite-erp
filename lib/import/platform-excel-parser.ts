@@ -182,9 +182,9 @@ function parseTokopediaIncome(sheet: XLSX.WorkSheet): NormalizedPlatformOrder[] 
     const relatedOrderId = String(row["Related order ID"] ?? "").trim();
     if (!orderId) continue;
 
-    const grossAmount = Number(row["Total Revenue"] ?? 0);
-    const platformFee = Math.abs(Number(row["Total Fees"] ?? 0));
-    const netAmount = Number(row["Total settlement amount"] ?? 0);
+    const grossAmount = parseNum(row["Total Revenue"]);
+    const platformFee = Math.abs(parseNum(row["Total Fees"]));
+    const netAmount = parseNum(row["Total settlement amount"]);
     const productName = String(row["Details of items sold"] ?? "").trim();
 
     orders.push({
@@ -364,10 +364,16 @@ function parseShopeeIncome(sheet: XLSX.WorkSheet): NormalizedPlatformOrder[] {
 
 export function mergeTokopediaFiles(
   completedBuffer: ArrayBuffer,
-  incomeBuffer: ArrayBuffer
+  incomeBuffer: ArrayBuffer,
+  completedFileName = "",
 ): NormalizedPlatformOrder[] {
   // Completed Orders: headers at row 0, descriptions at row 1, data from row 2
-  const wbC = XLSX.read(new Uint8Array(completedBuffer), { type: "array" });
+  // Force comma-delimited parsing for CSV exports so embedded tabs aren't
+  // mistaken for column separators by XLSX's auto-detection.
+  const isCsv = completedFileName.toLowerCase().endsWith(".csv");
+  const wbC = isCsv
+    ? XLSX.read(new TextDecoder().decode(new Uint8Array(completedBuffer)), { type: "string", FS: "," })
+    : XLSX.read(new Uint8Array(completedBuffer), { type: "array" });
   const sheetC = wbC.Sheets[wbC.SheetNames[0]];
   const completedRows = (
     XLSX.utils.sheet_to_json<unknown[]>(sheetC, { header: 1, defval: "" }) as unknown[][]
@@ -408,8 +414,8 @@ export function mergeTokopediaFiles(
     const relatedOrderId = String(r[0] ?? "").trim();
     if (!orderId) continue;
 
-    const netAmount = Number(r[5] ?? 0);
-    const platformFee = Math.abs(Number(r[14] ?? 0));
+    const netAmount = parseNum(r[5]);
+    const platformFee = Math.abs(parseNum(r[14]));
     const settlementDate = parseExcelDate(r[3]);
 
     const completedItems = itemsByOrder.get(orderId) ?? [];

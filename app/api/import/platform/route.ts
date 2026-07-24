@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     if (completedFile && incomeFile) {
       platform = "tokopedia";
       const [cb, ib] = await Promise.all([completedFile.arrayBuffer(), incomeFile.arrayBuffer()]);
-      orders = mergeTokopediaFiles(cb, ib);
+      orders = mergeTokopediaFiles(cb, ib, completedFile.name);
     } else if (singleFile) {
       const buffer = await singleFile.arrayBuffer();
       ({ platform, orders } = parsePlatformExcel(buffer));

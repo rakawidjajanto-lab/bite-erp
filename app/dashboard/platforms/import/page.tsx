@@ -18,10 +18,12 @@ function FileDropZone({
   label,
   selected,
   onFile,
+  accept = ".xlsx",
 }: {
   label: string;
   selected: string | null;
   onFile: (f: File) => void;
+  accept?: string;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   return (
@@ -49,7 +51,7 @@ function FileDropZone({
       <input
         ref={ref}
         type="file"
-        accept=".xlsx"
+        accept={accept}
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];
@@ -125,9 +127,10 @@ function TokopediaImporter() {
       </div>
 
       <FileDropZone
-        label="Upload Completed Orders .xlsx"
+        label="Upload Completed Orders (.xlsx or .csv)"
         selected={completedFile?.name ?? null}
         onFile={setCompletedFile}
+        accept=".xlsx,.csv"
       />
       <FileDropZone
         label="Upload Income Settlement .xlsx"
